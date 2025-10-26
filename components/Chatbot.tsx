@@ -6,7 +6,7 @@ import { BotIcon, UserIcon, SendIcon, LoadingSpinner } from './icons/FeatureIcon
 
 const Chatbot: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([
-    { role: 'model', text: 'Hello! How can I help you today?' },
+    { role: 'model', text: 'Ciao! Come posso aiutarti oggi?' },
   ]);
   const [userInput, setUserInput] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -42,7 +42,7 @@ const Chatbot: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-[60vh]">
+    <div className="flex flex-col h-full">
       <div className="flex-1 overflow-y-auto pr-4 -mr-4 space-y-4">
         {messages.map((msg, index) => (
           <div key={index} className={`flex items-start gap-3 ${msg.role === 'user' ? 'justify-end' : ''}`}>
@@ -83,7 +83,7 @@ const Chatbot: React.FC = () => {
           type="text"
           value={userInput}
           onChange={(e) => setUserInput(e.target.value)}
-          placeholder="Ask me anything..."
+          placeholder="Chiedimi qualsiasi cosa..."
           className="flex-1 bg-gray-700 border border-gray-600 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-shadow"
           disabled={isLoading}
         />

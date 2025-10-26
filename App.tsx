@@ -20,10 +20,10 @@ const App: React.FC = () => {
       <div className="w-full max-w-4xl mx-auto">
         <header className="text-center mb-8">
           <h1 className="text-4xl sm:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-indigo-500">
-            AI Story Weaver & Chat
+            Cantastorie AI: Scrittura & Narrazione
           </h1>
           <p className="text-gray-400 mt-2">
-            Where your imagination meets artificial intelligence.
+            Dove la tua immaginazione incontra l'intelligenza artificiale.
           </p>
         </header>
 
@@ -33,7 +33,7 @@ const App: React.FC = () => {
             className={navButtonClasses(AppView.Story)}
           >
             <WriterIcon />
-            Story Generator
+            Crea Storia
           </button>
           <button
             onClick={() => setActiveView(AppView.Chat)}

@@ -1,5 +1,5 @@
 {
-  "name": "AI Story Weaver & Chat",
-  "description": "Upload an image to generate a story's opening paragraph, then listen to it narrated by an AI voice. Also features a helpful AI chatbot for your questions.",
+  "name": "Cantastorie AI: Scrittura & Narrazione",
+  "description": "Dai vita alle tue idee. Carica un'immagine, scegli un genere e la nostra IA scriverà l'inizio di una storia. Continua, concludi e affina il racconto, poi ascoltalo narrato da una voce espressiva o esporta la tua creazione. Include anche un chatbot per le tue domande.",
   "requestFramePermissions": []
 }

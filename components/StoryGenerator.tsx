@@ -246,7 +246,7 @@ const StoryGenerator: React.FC = () => {
         generationAbortControllerRef.current.abort();
         generationAbortControllerRef.current = null;
         setIsLoading(false);
-        setError("Story generation cancelled.");
+        setError("Generazione della storia annullata.");
     }
   };
 
@@ -272,7 +272,7 @@ const StoryGenerator: React.FC = () => {
             setStoryParts([generatedParagraph]);
         } catch (err) {
             if (!controller.signal.aborted) {
-                setError(err instanceof Error ? err.message : 'An unknown error occurred.');
+                setError(err instanceof Error ? err.message : 'Si è verificato un errore sconosciuto.');
             }
         } finally {
              if (generationAbortControllerRef.current === controller) {
@@ -282,7 +282,7 @@ const StoryGenerator: React.FC = () => {
         }
       };
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An unknown error occurred.');
+      setError(err instanceof Error ? err.message : 'Si è verificato un errore sconosciuto.');
       setIsLoading(false);
       generationAbortControllerRef.current = null;
     }
@@ -315,7 +315,7 @@ const StoryGenerator: React.FC = () => {
         invalidateSecondaryContent();
 
     } catch (err) {
-        setError(err instanceof Error ? err.message : `Failed to advance the story.`);
+        setError(err instanceof Error ? err.message : `Impossibile far avanzare la storia.`);
     } finally {
         setIsAdvancing(false);
     }
@@ -343,7 +343,7 @@ const StoryGenerator: React.FC = () => {
         invalidateSecondaryContent();
 
     } catch (err) {
-        setError(err instanceof Error ? err.message : `Failed to regenerate part.`);
+        setError(err instanceof Error ? err.message : `Impossibile rigenerare la parte.`);
     } finally {
         setRegeneratingIndex(null);
         setHintText('');
@@ -375,7 +375,7 @@ const StoryGenerator: React.FC = () => {
         invalidateSecondaryContent();
 
     } catch (err) {
-        setError(err instanceof Error ? err.message : `Failed to regenerate paragraph.`);
+        setError(err instanceof Error ? err.message : `Impossibile rigenerare il paragrafo.`);
     } finally {
         setRegeneratingParagraph(null);
         setHintText('');
@@ -395,7 +395,7 @@ const StoryGenerator: React.FC = () => {
         const suggestedTitles = await suggestTitles(fullStory);
         setTitles(suggestedTitles);
     } catch (err) {
-        setError(err instanceof Error ? err.message : 'An unknown error occurred while suggesting titles.');
+        setError(err instanceof Error ? err.message : 'Si è verificato un errore durante il suggerimento dei titoli.');
     } finally {
         setIsSuggestingTitles(false);
     }
@@ -414,11 +414,11 @@ const StoryGenerator: React.FC = () => {
             setStoryParts(refinedStoryParts);
             invalidateSecondaryContent();
         } else {
-            throw new Error("The AI returned an empty story. Please try again.");
+            throw new Error("L'IA ha restituito una storia vuota. Riprova.");
         }
 
     } catch (err) {
-        setError(err instanceof Error ? err.message : `Failed to refine the story.`);
+        setError(err instanceof Error ? err.message : `Impossibile affinare la storia.`);
     } finally {
         setIsRefining(false);
     }
@@ -429,7 +429,7 @@ const StoryGenerator: React.FC = () => {
         return generatedAudio;
     }
     const fullStory = getFullStoryText();
-    if (!fullStory) throw new Error("Story is empty.");
+    if (!fullStory) throw new Error("La storia è vuota.");
     
     const base64Audio = await textToSpeech(fullStory);
     setGeneratedAudio(base64Audio);
@@ -484,7 +484,7 @@ const StoryGenerator: React.FC = () => {
         setPlaybackState('playing');
 
     } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to play audio.');
+        setError(err instanceof Error ? err.message : 'Impossibile riprodurre l\'audio.');
         setIsAudioLoading(false);
         handleStopPlayback();
     }
@@ -502,7 +502,7 @@ const StoryGenerator: React.FC = () => {
         const audioBytes = decode(audioB64);
         const wavBlob = createWavBlob(audioBytes, { sampleRate: 24000, numChannels: 1, bitsPerSample: 16 });
         const audioDataUri = await blobToBase64(wavBlob);
-        const storyTitle = selectedTitle || (titles ? titles[0] : "AI Generated Story");
+        const storyTitle = selectedTitle || (titles ? titles[0] : "Storia Generata dall'IA");
 
         const storyHtml = storyParts?.map(p => `<p>${p.map(chunk => chunk.replace(/</g, "&lt;").replace(/>/g, "&gt;")).join(' ')}</p>`).join('') || '';
         
@@ -521,10 +521,10 @@ const StoryGenerator: React.FC = () => {
 </head>
 <body>
     <div class="container">
-        <img src="${image}" alt="Inspiration Image">
+        <img src="${image}" alt="Immagine di Ispirazione">
         <h1>${storyTitle}</h1>
         ${storyHtml}
-        <audio controls src="${audioDataUri}">Your browser does not support the audio element.</audio>
+        <audio controls src="${audioDataUri}">Il tuo browser non supporta l'elemento audio.</audio>
     </div>
 </body>
 </html>`;
@@ -533,13 +533,13 @@ const StoryGenerator: React.FC = () => {
         const url = URL.createObjectURL(htmlBlob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'ai-story.html';
+        a.download = 'storia-ai.html';
         document.body.appendChild(a);
         a.click();
         URL.revokeObjectURL(url);
         a.remove();
     } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to export HTML page.');
+        setError(err instanceof Error ? err.message : 'Impossibile esportare la pagina HTML.');
     } finally {
         setIsExportingHtml(false);
     }
@@ -557,13 +557,13 @@ const StoryGenerator: React.FC = () => {
       const a = document.createElement('a');
       a.style.display = 'none';
       a.href = url;
-      a.download = 'story-audio.wav';
+      a.download = 'storia-audio.wav';
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
       a.remove();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to download audio.');
+      setError(err instanceof Error ? err.message : 'Impossibile scaricare l\'audio.');
     } finally {
       setIsDownloadingAudio(false);
     }
@@ -579,11 +579,11 @@ const StoryGenerator: React.FC = () => {
           <label htmlFor="image-upload" className="cursor-pointer">
             <div id="story-image-container" className="relative border-2 border-dashed border-gray-500 rounded-lg p-6 text-center hover:border-indigo-400 transition-colors duration-200 h-64 md:h-full flex flex-col justify-center items-center bg-gray-900/50">
               {image ? (
-                <img src={image} alt="Upload preview" className="max-h-full max-w-full object-contain rounded-md" />
+                <img src={image} alt="Anteprima di caricamento" className="max-h-full max-w-full object-contain rounded-md" />
               ) : (
                 <>
                   <UploadIcon />
-                  <p className="mt-2 text-gray-400">Click to upload an image</p>
+                  <p className="mt-2 text-gray-400">Clicca per caricare un'immagine</p>
                   <p className="text-xs text-gray-500">PNG, JPG, WEBP</p>
                 </>
               )}
@@ -592,25 +592,25 @@ const StoryGenerator: React.FC = () => {
           <input id="image-upload" type="file" className="hidden" accept="image/*" onChange={handleImageChange} />
         </div>
         <div className="flex-1 flex flex-col justify-center">
-          <h2 className="text-2xl font-semibold mb-4 text-indigo-300">Your Story's Canvas</h2>
-          <p className="text-gray-400 mb-4">Upload an image, choose a genre, and let our AI ghostwriter craft a captivating opening for you.</p>
+          <h2 className="text-2xl font-semibold mb-4 text-indigo-300">La Tela della Tua Storia</h2>
+          <p className="text-gray-400 mb-4">Carica un'immagine, scegli un genere e lascia che la nostra IA crei un incipit avvincente per te.</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
              <div>
-                <label htmlFor="story-genre" className="block text-sm font-medium text-gray-300 mb-2">Genre</label>
+                <label htmlFor="story-genre" className="block text-sm font-medium text-gray-300 mb-2">Genere</label>
                 <select id="story-genre" value={genre} onChange={(e) => setGenre(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-shadow">
                     <option value="Fantasy">Fantasy</option>
-                    <option value="Sci-Fi">Sci-Fi</option>
+                    <option value="Sci-Fi">Fantascienza</option>
                     <option value="Horror">Horror</option>
-                    <option value="Mystery">Mystery</option>
-                    <option value="Romance">Romance</option>
+                    <option value="Mystery">Mistero</option>
+                    <option value="Romance">Romantico</option>
                     <option value="Adventure">Avventura</option>
                     <option value="Thriller">Thriller</option>
                     <option value="Humor">Umorismo</option>
                 </select>
             </div>
             <div>
-                <label htmlFor="story-theme" className="block text-sm font-medium text-gray-300 mb-2">Theme (optional)</label>
-                <input id="story-theme" type="text" value={theme} onChange={(e) => setTheme(e.target.value)} placeholder="e.g., a lost artifact" className="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-shadow"/>
+                <label htmlFor="story-theme" className="block text-sm font-medium text-gray-300 mb-2">Tema (opzionale)</label>
+                <input id="story-theme" type="text" value={theme} onChange={(e) => setTheme(e.target.value)} placeholder="es. un artefatto perduto" className="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-shadow"/>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -620,13 +620,13 @@ const StoryGenerator: React.FC = () => {
               className="flex items-center justify-center gap-2 flex-grow bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 transition-all duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed transform hover:scale-105 disabled:scale-100"
             >
               {isLoading ? <LoadingSpinner /> : <SparklesIcon />}
-              {isLoading ? 'Generating...' : 'Generate Story'}
+              {isLoading ? 'Creazione in corso...' : 'Genera Storia'}
             </button>
             {isLoading && (
                 <button 
                     onClick={handleCancelGeneration} 
                     className="flex-shrink-0 bg-red-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-red-700 transition-colors duration-200"
-                    title="Cancel Generation"
+                    title="Annulla Generazione"
                 >
                     <CancelIcon />
                 </button>
@@ -640,7 +640,7 @@ const StoryGenerator: React.FC = () => {
       {storyParts && storyParts.length > 0 && (
         <div className="bg-gray-800 p-6 rounded-lg border border-gray-700 mt-4 animate-fade-in">
           <h2 className="text-2xl font-bold mb-4 text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-indigo-500 h-8">
-            {selectedTitle || 'The Beginning...'}
+            {selectedTitle || 'L\'Inizio...'}
           </h2>
           
           <div className="space-y-4">
@@ -656,7 +656,7 @@ const StoryGenerator: React.FC = () => {
                             onClick={() => handleRegenerateParagraph(pIndex)}
                             disabled={isActionInProgress}
                             className="p-1 rounded-full hover:bg-gray-600 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors"
-                            title="Regenerate Paragraph"
+                            title="Rigenera Paragrafo"
                         >
                             <RegenerateIcon />
                         </button>
@@ -667,7 +667,7 @@ const StoryGenerator: React.FC = () => {
                             }}
                             disabled={isActionInProgress}
                             className={`p-1 rounded-full hover:bg-gray-600 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors ${editingHintForParagraph === pIndex ? 'bg-indigo-600 text-white' : ''}`}
-                            title="Regenerate Paragraph with hint"
+                            title="Rigenera paragrafo con suggerimento"
                         >
                             <HintIcon />
                         </button>
@@ -714,7 +714,7 @@ const StoryGenerator: React.FC = () => {
                                                 onClick={() => handleRegenerateChunk(pIndex, cIndex)}
                                                 disabled={isActionInProgress}
                                                 className="p-1 rounded-full hover:bg-gray-600 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors"
-                                                title="Regenerate"
+                                                title="Rigenera"
                                             >
                                                 <RegenerateIcon />
                                             </button>
@@ -725,7 +725,7 @@ const StoryGenerator: React.FC = () => {
                                                 }}
                                                 disabled={isActionInProgress}
                                                 className={`p-1 rounded-full hover:bg-gray-600 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors ${isEditingHint ? 'bg-indigo-600 text-white' : ''}`}
-                                                title="Regenerate with hint"
+                                                title="Rigenera con suggerimento"
                                             >
                                                 <HintIcon />
                                             </button>
@@ -761,7 +761,7 @@ const StoryGenerator: React.FC = () => {
           
           {titles && (
             <div className="mt-6 bg-gray-900/50 p-4 rounded-lg border border-gray-600">
-                <h4 className="text-lg font-semibold mb-3 text-indigo-400">Click a title to apply it:</h4>
+                <h4 className="text-lg font-semibold mb-3 text-indigo-400">Clicca un titolo per applicarlo:</h4>
                 <ul className="space-y-1">
                     {titles.map((title, index) => (
                         <li key={index}>
@@ -784,12 +784,12 @@ const StoryGenerator: React.FC = () => {
           <div className="mt-6 flex flex-wrap gap-4 justify-end">
             <button onClick={handleSuggestTitles} disabled={isActionInProgress || playbackState !== 'stopped'} className="inline-flex items-center gap-2 bg-teal-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-teal-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed">
               {isSuggestingTitles ? <LoadingSpinner /> : <TitleIcon />}
-              {isSuggestingTitles ? 'Suggesting...' : 'Suggest Titles'}
+              {isSuggestingTitles ? 'Suggerisco...' : 'Suggerisci Titoli'}
             </button>
             {!isConcluded && (
                  <button onClick={handleAdvanceStory} disabled={isActionInProgress || playbackState !== 'stopped'} className="inline-flex items-center gap-2 bg-teal-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-teal-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed">
                     {isAdvancing ? <LoadingSpinner /> : (storyParts.length < 2 ? <ContinueIcon /> : <ConcludeIcon />)}
-                    {isAdvancing ? (storyParts.length < 2 ? 'Continuing...' : 'Concluding...') : (storyParts.length < 2 ? 'Continue Story' : 'Conclude Story')}
+                    {isAdvancing ? (storyParts.length < 2 ? 'Continuo...' : 'Concludo...') : (storyParts.length < 2 ? 'Continua Storia' : 'Concludi Storia')}
                 </button>
             )}
             {isConcluded && (
@@ -801,7 +801,7 @@ const StoryGenerator: React.FC = () => {
             
             <button onClick={handlePlaybackControls} disabled={isActionInProgress || isAudioLoading} className="inline-flex items-center gap-2 bg-green-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-green-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed">
               {isAudioLoading ? <LoadingSpinner /> : (playbackState === 'playing' ? <PauseIcon /> : (playbackState === 'paused' ? <PlayIcon /> : <SpeakerIcon />) )}
-              {isAudioLoading ? 'Loading...' : (playbackState === 'playing' ? 'Pause' : (playbackState === 'paused' ? 'Resume' : 'Read Aloud'))}
+              {isAudioLoading ? 'Caricamento...' : (playbackState === 'playing' ? 'Pausa' : (playbackState === 'paused' ? 'Riprendi' : 'Leggi ad Alta Voce'))}
             </button>
             {playbackState !== 'stopped' && (
                  <button onClick={handleStopPlayback} className="inline-flex items-center gap-2 bg-red-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-red-700 transition-colors duration-200">
@@ -812,11 +812,11 @@ const StoryGenerator: React.FC = () => {
 
             <button onClick={handleDownloadAudio} disabled={isActionInProgress || playbackState !== 'stopped'} className="inline-flex items-center gap-2 bg-sky-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-sky-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed">
               {isDownloadingAudio ? <LoadingSpinner /> : <DownloadIcon />}
-              {isDownloadingAudio ? 'Preparing...' : 'Download Audio'}
+              {isDownloadingAudio ? 'Preparo...' : 'Scarica Audio'}
             </button>
             <button onClick={handleExportHtml} disabled={isActionInProgress || playbackState !== 'stopped'} className="inline-flex items-center gap-2 bg-purple-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-purple-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed">
               {isExportingHtml ? <LoadingSpinner /> : <HtmlIcon />}
-              {isExportingHtml ? 'Exporting...' : 'Export HTML'}
+              {isExportingHtml ? 'Esporto...' : 'Esporta HTML'}
             </button>
           </div>
         </div>

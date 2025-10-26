@@ -72,3 +72,15 @@ export const ConcludeIcon = () => (
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
     </svg>
 );
+
+export const RegenerateIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 1V4a2 2 0 00-2-2h-3.172a2 2 0 00-1.414.586l-.828.828A2 2 0 0111.172 4H6a2 2 0 00-2 2v12a2 2 0 002 2h14a2 2 0 002-2v-3m-5-4l-3 3m0 0l-3-3m3 3V3" transform="rotate(90 12 12)" />
+    </svg>
+);
+
+export const HintIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 017.072 0l-.707.707M12 21a9 9 0 110-18 9 9 0 010 18z" />
+    </svg>
+);

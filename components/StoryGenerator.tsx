@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback } from 'react';
-import { generateStoryFromImage, textToSpeech, continueStory, suggestTitles, concludeStory } from '../services/geminiService';
-import { UploadIcon, SparklesIcon, SpeakerIcon, LoadingSpinner, DownloadIcon, HtmlIcon, ContinueIcon, TitleIcon, ConcludeIcon } from './icons/FeatureIcons';
+import { generateStoryFromImage, textToSpeech, continueStory, suggestTitles, concludeStory, regenerateChunk, regenerateParagraph, analyzeStoryTone } from '../services/geminiService';
+import { UploadIcon, SparklesIcon, SpeakerIcon, LoadingSpinner, DownloadIcon, HtmlIcon, ContinueIcon, TitleIcon, ConcludeIcon, RegenerateIcon, HintIcon } from './icons/FeatureIcons';
 
 // Audio decoding utilities
 const decode = (base64: string): Uint8Array => {
@@ -45,29 +45,29 @@ const createWavBlob = (pcmData: Uint8Array, options: { sampleRate: number, numCh
     const blockAlign = numChannels * (bitsPerSample / 8);
     const dataSize = pcmData.length;
     
-    const buffer = new ArrayBuffer(44);
+    const buffer = new ArrayBuffer(44 + dataSize);
     const view = new DataView(buffer);
 
-    // RIFF chunk descriptor
     writeString(view, 0, 'RIFF');
     view.setUint32(4, 36 + dataSize, true);
     writeString(view, 8, 'WAVE');
-    
-    // fmt sub-chunk
     writeString(view, 12, 'fmt ');
-    view.setUint32(16, 16, true); // Subchunk1Size for PCM
-    view.setUint16(20, 1, true); // AudioFormat for PCM
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
     view.setUint16(22, numChannels, true);
     view.setUint32(24, sampleRate, true);
     view.setUint32(28, byteRate, true);
     view.setUint16(32, blockAlign, true);
     view.setUint16(34, bitsPerSample, true);
-    
-    // data sub-chunk
     writeString(view, 36, 'data');
     view.setUint32(40, dataSize, true);
+    
+    // Write PCM data
+    for (let i = 0; i < pcmData.length; i++) {
+        view.setUint8(44 + i, pcmData[i]);
+    }
 
-    return new Blob([view, pcmData], { type: 'audio/wav' });
+    return new Blob([view], { type: 'audio/wav' });
 };
 
 // Blob to Base64 converter
@@ -80,13 +80,12 @@ const blobToBase64 = (blob: Blob): Promise<string> => {
     });
 };
 
-
 const StoryGenerator: React.FC = () => {
   const [image, setImage] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [theme, setTheme] = useState<string>('');
   const [genre, setGenre] = useState<string>('Fantasy');
-  const [story, setStory] = useState<string | null>(null);
+  const [storyParts, setStoryParts] = useState<string[][] | null>(null);
   const [titles, setTitles] = useState<string[] | null>(null);
   const [selectedTitle, setSelectedTitle] = useState<string | null>(null);
   
@@ -96,9 +95,12 @@ const StoryGenerator: React.FC = () => {
   const [isDownloadingAudio, setIsDownloadingAudio] = useState<boolean>(false);
   const [isAdvancing, setIsAdvancing] = useState<boolean>(false);
   const [isSuggestingTitles, setIsSuggestingTitles] = useState<boolean>(false);
-  const [isConcluded, setIsConcluded] = useState<boolean>(false);
-  const [continuationCount, setContinuationCount] = useState<number>(0);
-
+  
+  const [regeneratingIndex, setRegeneratingIndex] = useState<{ p: number; c: number } | null>(null);
+  const [editingHintFor, setEditingHintFor] = useState<{ p: number; c: number } | null>(null);
+  const [regeneratingParagraph, setRegeneratingParagraph] = useState<number | null>(null);
+  const [editingHintForParagraph, setEditingHintForParagraph] = useState<number | null>(null);
+  const [hintText, setHintText] = useState<string>('');
 
   const [error, setError] = useState<string | null>(null);
   const [generatedAudio, setGeneratedAudio] = useState<string | null>(null);
@@ -106,14 +108,16 @@ const StoryGenerator: React.FC = () => {
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
 
+  const getFullStoryText = useCallback(() => {
+    return storyParts ? storyParts.map(p => p.join(' ')).join('\n\n') : '';
+  }, [storyParts]);
+
   const resetStoryState = () => {
-    setStory(null);
+    setStoryParts(null);
     setError(null);
     setGeneratedAudio(null);
     setTitles(null);
     setSelectedTitle(null);
-    setContinuationCount(0);
-    setIsConcluded(false);
   };
 
   const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -140,8 +144,8 @@ const StoryGenerator: React.FC = () => {
       reader.readAsDataURL(imageFile);
       reader.onloadend = async () => {
         const base64Data = (reader.result as string).split(',')[1];
-        const generatedStory = await generateStoryFromImage(base64Data, imageFile.type, theme, genre);
-        setStory(generatedStory);
+        const generatedParagraph = await generateStoryFromImage(base64Data, imageFile.type, genre, theme);
+        setStoryParts([generatedParagraph]);
       };
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unknown error occurred.');
@@ -157,49 +161,126 @@ const StoryGenerator: React.FC = () => {
   };
 
   const handleAdvanceStory = useCallback(async () => {
-    if (!story) return;
+    if (!storyParts || storyParts.length === 0) return;
 
     setIsAdvancing(true);
     setError(null);
     try {
-        let nextParagraph: string;
-        if (continuationCount === 0) {
-            nextParagraph = await continueStory(story);
-            setContinuationCount(1);
+        const currentStory = getFullStoryText();
+        let nextParagraph: string[];
+
+        if (storyParts.length === 1) {
+            nextParagraph = await continueStory(currentStory, genre);
         } else {
-            nextParagraph = await concludeStory(story);
-            setIsConcluded(true);
+            nextParagraph = await concludeStory(currentStory, genre);
         }
         
-        setStory(prevStory => (prevStory + '\n\n' + nextParagraph).trim());
+        setStoryParts(prevStory => [...(prevStory || []), nextParagraph]);
         invalidateSecondaryContent();
 
     } catch (err) {
-        setError(err instanceof Error ? err.message : `Failed to ${continuationCount === 0 ? 'continue' : 'conclude'} the story.`);
+        setError(err instanceof Error ? err.message : `Failed to advance the story.`);
     } finally {
         setIsAdvancing(false);
     }
-  }, [story, continuationCount]);
+  }, [storyParts, getFullStoryText, genre]);
+
+ const handleRegenerateChunk = useCallback(async (pIndex: number, cIndex: number, hint?: string) => {
+    if (!storyParts) return;
+
+    setRegeneratingIndex({ p: pIndex, c: cIndex });
+    if (editingHintFor) setEditingHintFor(null);
+    setError(null);
+
+    try {
+        const paragraphContext = storyParts[pIndex].join(' ');
+        const chunkToRegenerate = storyParts[pIndex][cIndex];
+
+        const newChunk = await regenerateChunk(paragraphContext, chunkToRegenerate, hint);
+
+        setStoryParts(prev => {
+            if (!prev) return null;
+            const newStoryParts = prev.map(p => [...p]);
+            newStoryParts[pIndex][cIndex] = newChunk;
+            return newStoryParts;
+        });
+        invalidateSecondaryContent();
+
+    } catch (err) {
+        setError(err instanceof Error ? err.message : `Failed to regenerate part.`);
+    } finally {
+        setRegeneratingIndex(null);
+        setHintText('');
+    }
+}, [storyParts, editingHintFor]);
+
+ const handleRegenerateParagraph = useCallback(async (pIndex: number, hint?: string) => {
+    if (!storyParts) return;
+
+    setRegeneratingParagraph(pIndex);
+    if (editingHintForParagraph !== null) setEditingHintForParagraph(null);
+    setError(null);
+
+    try {
+        const storyContext = {
+            before: storyParts.slice(0, pIndex).map(p => p.join(' ')).join('\n\n'),
+            after: storyParts.slice(pIndex + 1).map(p => p.join(' ')).join('\n\n')
+        };
+        const paragraphToRegenerate = storyParts[pIndex].join(' ');
+
+        const newParagraph = await regenerateParagraph(storyContext, paragraphToRegenerate, hint);
+
+        setStoryParts(prev => {
+            if (!prev) return null;
+            const newStoryParts = prev.map(p => [...p]);
+            newStoryParts[pIndex] = newParagraph;
+            return newStoryParts;
+        });
+        invalidateSecondaryContent();
+
+    } catch (err) {
+        setError(err instanceof Error ? err.message : `Failed to regenerate paragraph.`);
+    } finally {
+        setRegeneratingParagraph(null);
+        setHintText('');
+    }
+}, [storyParts, editingHintForParagraph]);
+
 
   const handleSuggestTitles = useCallback(async () => {
-    if (!story) return;
+    if (!storyParts) return;
 
     setIsSuggestingTitles(true);
     setTitles(null);
     setSelectedTitle(null);
     setError(null);
     try {
-        const suggestedTitles = await suggestTitles(story);
+        const fullStory = getFullStoryText();
+        const suggestedTitles = await suggestTitles(fullStory);
         setTitles(suggestedTitles);
     } catch (err) {
         setError(err instanceof Error ? err.message : 'An unknown error occurred while suggesting titles.');
     } finally {
         setIsSuggestingTitles(false);
     }
-  }, [story]);
+  }, [storyParts, getFullStoryText]);
+
+  const getOrGenerateAudio = useCallback(async (forceNew = false): Promise<string> => {
+    if (generatedAudio && !forceNew) {
+        return generatedAudio;
+    }
+    const fullStory = getFullStoryText();
+    if (!fullStory) throw new Error("Story is empty.");
+    
+    const toneInstruction = await analyzeStoryTone(fullStory);
+    const base64Audio = await textToSpeech(fullStory, toneInstruction);
+    setGeneratedAudio(base64Audio);
+    return base64Audio;
+  }, [generatedAudio, getFullStoryText]);
+
 
   const handleReadAloud = useCallback(async () => {
-    if (!story || isReading) return;
+    if (isReading) return;
 
     if (audioSourceRef.current) {
       audioSourceRef.current.stop();
@@ -216,10 +297,8 @@ const StoryGenerator: React.FC = () => {
         const audioContext = audioContextRef.current;
         await audioContext.resume();
 
-        const base64Audio = generatedAudio || await textToSpeech(story);
-        if (!generatedAudio) {
-            setGeneratedAudio(base64Audio);
-        }
+        const base64Audio = await getOrGenerateAudio();
+        
         const audioBytes = decode(base64Audio);
         const audioBuffer = await decodeAudioData(audioBytes, audioContext, 24000, 1);
         
@@ -237,21 +316,22 @@ const StoryGenerator: React.FC = () => {
         setError(err instanceof Error ? err.message : 'Failed to play audio.');
         setIsReading(false);
     }
-}, [story, isReading, generatedAudio]);
+}, [isReading, getOrGenerateAudio]);
 
   const handleExportHtml = async () => {
-    if (!story || !image) return;
+    if (!getFullStoryText() || !image) return;
 
     setIsExportingHtml(true);
     setError(null);
 
     try {
-        const audioB64 = generatedAudio || await textToSpeech(story);
-        if (!generatedAudio) setGeneratedAudio(audioB64);
+        const audioB64 = await getOrGenerateAudio();
         const audioBytes = decode(audioB64);
         const wavBlob = createWavBlob(audioBytes, { sampleRate: 24000, numChannels: 1, bitsPerSample: 16 });
         const audioDataUri = await blobToBase64(wavBlob);
         const storyTitle = selectedTitle || (titles ? titles[0] : "AI Generated Story");
+
+        const storyHtml = storyParts?.map(p => `<p>${p.map(chunk => chunk.replace(/</g, "&lt;").replace(/>/g, "&gt;")).join(' ')}</p>`).join('') || '';
 
         const pageHtml = `
 <!DOCTYPE html>
@@ -265,7 +345,7 @@ const StoryGenerator: React.FC = () => {
         .container { max-width: 800px; margin: 0 auto; background-color: #1f2937; border-radius: 0.75rem; padding: 2rem; border: 1px solid #374151; }
         img { max-width: 100%; border-radius: 0.5rem; margin-bottom: 1.5rem; }
         h1 { color: #a5b4fc; font-size: 1.875rem; margin-bottom: 1rem; }
-        p { white-space: pre-wrap; color: #d1d5db; }
+        p { color: #d1d5db; margin-bottom: 1em; }
         audio { width: 100%; margin-top: 2rem; }
     </style>
 </head>
@@ -273,7 +353,7 @@ const StoryGenerator: React.FC = () => {
     <div class="container">
         <img src="${image}" alt="Inspiration Image">
         <h1>${storyTitle}</h1>
-        <p>${story.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>
+        ${storyHtml}
         <audio controls src="${audioDataUri}">Your browser does not support the audio element.</audio>
     </div>
 </body>
@@ -296,12 +376,11 @@ const StoryGenerator: React.FC = () => {
   };
 
   const handleDownloadAudio = async () => {
-    if (!story) return;
+    if (!getFullStoryText()) return;
     setIsDownloadingAudio(true);
     setError(null);
     try {
-      const audioToDownload = generatedAudio || await textToSpeech(story);
-      if (!generatedAudio) setGeneratedAudio(audioToDownload);
+      const audioToDownload = await getOrGenerateAudio();
       const audioBytes = decode(audioToDownload);
       const wavBlob = createWavBlob(audioBytes, { sampleRate: 24000, numChannels: 1, bitsPerSample: 16 });
       const url = URL.createObjectURL(wavBlob);
@@ -320,7 +399,8 @@ const StoryGenerator: React.FC = () => {
     }
   };
 
-  const isActionInProgress = isReading || isDownloadingAudio || isExportingHtml || isAdvancing || isSuggestingTitles;
+  const isActionInProgress = isLoading || isReading || isDownloadingAudio || isExportingHtml || isAdvancing || isSuggestingTitles || regeneratingIndex !== null || regeneratingParagraph !== null;
+  const isConcluded = storyParts && storyParts.length >= 3;
 
   return (
     <div className="flex flex-col gap-6">
@@ -373,12 +453,127 @@ const StoryGenerator: React.FC = () => {
 
       {error && <div className="bg-red-900/50 border border-red-700 text-red-300 p-4 rounded-lg">{error}</div>}
       
-      {story && (
+      {storyParts && storyParts.length > 0 && (
         <div className="bg-gray-800 p-6 rounded-lg border border-gray-700 mt-4 animate-fade-in">
           <h2 className="text-2xl font-bold mb-4 text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-indigo-500 h-8">
             {selectedTitle || 'The Beginning...'}
           </h2>
-          <p className="text-gray-300 leading-relaxed whitespace-pre-wrap">{story}</p>
+          
+          <div className="space-y-4">
+            {storyParts.map((paragraph, pIndex) => (
+                <div key={pIndex} className="relative group/paragraph">
+                    {regeneratingParagraph === pIndex && (
+                        <div className="absolute inset-0 bg-gray-800/70 flex items-center justify-center rounded-lg z-30">
+                            <LoadingSpinner />
+                        </div>
+                    )}
+                     <div className="absolute top-0 right-0 z-20 hidden group-hover/paragraph:flex bg-gray-900/70 backdrop-blur-sm p-1 rounded-bl-lg rounded-tr-lg">
+                        <button 
+                            onClick={() => handleRegenerateParagraph(pIndex)}
+                            disabled={isActionInProgress}
+                            className="p-1 rounded-full hover:bg-gray-600 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors"
+                            title="Regenerate Paragraph"
+                        >
+                            <RegenerateIcon />
+                        </button>
+                        <button 
+                            onClick={() => {
+                                setEditingHintForParagraph(editingHintForParagraph === pIndex ? null : pIndex);
+                                setEditingHintFor(null);
+                            }}
+                            disabled={isActionInProgress}
+                            className={`p-1 rounded-full hover:bg-gray-600 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors ${editingHintForParagraph === pIndex ? 'bg-indigo-600 text-white' : ''}`}
+                            title="Regenerate Paragraph with hint"
+                        >
+                            <HintIcon />
+                        </button>
+                    </div>
+
+                    {editingHintForParagraph === pIndex && (
+                        <div className="absolute top-8 right-0 z-20 w-64 bg-gray-700 p-2 rounded-lg shadow-lg flex gap-2">
+                            <input
+                                type="text"
+                                autoFocus
+                                value={hintText}
+                                onChange={(e) => setHintText(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'Enter') handleRegenerateParagraph(pIndex, hintText)}}
+                                placeholder="Suggerimento per paragrafo..."
+                                className="flex-1 bg-gray-600 border border-gray-500 rounded-md p-1.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                            />
+                            <button
+                                onClick={() => handleRegenerateParagraph(pIndex, hintText)}
+                                className="bg-indigo-600 text-white font-bold py-1 px-2 rounded-md text-sm hover:bg-indigo-700"
+                            >
+                                Invia
+                            </button>
+                        </div>
+                    )}
+
+
+                    <p className="text-gray-300 leading-relaxed">
+                        {paragraph.map((chunk, cIndex) => {
+                             const isRegenerating = regeneratingIndex?.p === pIndex && regeneratingIndex?.c === cIndex;
+                             const isEditingHint = editingHintFor?.p === pIndex && editingHintFor?.c === cIndex;
+
+                             return (
+                                <span key={cIndex} className="inline-block relative group/chunk pr-2">
+                                    {isRegenerating ? (
+                                        <span className="text-indigo-400 animate-pulse">...</span>
+                                    ) : (
+                                        <span className={`transition-colors duration-200 ${isEditingHint ? 'bg-indigo-900/50' : 'group-hover/chunk:bg-gray-700/75'}`}>{chunk}</span>
+                                    )}
+                                    {' '}
+                                    <div className="absolute top-0 -right-1 h-full items-center z-10 hidden group-hover/chunk:flex bg-gray-800 pl-1">
+                                        {!isRegenerating && (
+                                            <>
+                                            <button 
+                                                onClick={() => handleRegenerateChunk(pIndex, cIndex)}
+                                                disabled={isActionInProgress}
+                                                className="p-1 rounded-full hover:bg-gray-600 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors"
+                                                title="Regenerate"
+                                            >
+                                                <RegenerateIcon />
+                                            </button>
+                                            <button 
+                                                onClick={() => {
+                                                    setEditingHintFor(isEditingHint ? null : {p: pIndex, c: cIndex});
+                                                    setEditingHintForParagraph(null);
+                                                }}
+                                                disabled={isActionInProgress}
+                                                className={`p-1 rounded-full hover:bg-gray-600 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors ${isEditingHint ? 'bg-indigo-600 text-white' : ''}`}
+                                                title="Regenerate with hint"
+                                            >
+                                                <HintIcon />
+                                            </button>
+                                            </>
+                                        )}
+                                    </div>
+                                    {isEditingHint && (
+                                        <div className="absolute top-full left-0 mt-2 z-20 w-64 bg-gray-700 p-2 rounded-lg shadow-lg flex gap-2">
+                                            <input
+                                                type="text"
+                                                autoFocus
+                                                value={hintText}
+                                                onChange={(e) => setHintText(e.target.value)}
+                                                onKeyDown={(e) => { if (e.key === 'Enter') handleRegenerateChunk(pIndex, cIndex, hintText)}}
+                                                placeholder="Il tuo suggerimento..."
+                                                className="flex-1 bg-gray-600 border border-gray-500 rounded-md p-1.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                            />
+                                            <button
+                                                onClick={() => handleRegenerateChunk(pIndex, cIndex, hintText)}
+                                                className="bg-indigo-600 text-white font-bold py-1 px-2 rounded-md text-sm hover:bg-indigo-700"
+                                            >
+                                                Invia
+                                            </button>
+                                        </div>
+                                    )}
+                                </span>
+                            );
+                        })}
+                    </p>
+                </div>
+            ))}
+           </div>
           
           {titles && (
             <div className="mt-6 bg-gray-900/50 p-4 rounded-lg border border-gray-600">
@@ -409,8 +604,8 @@ const StoryGenerator: React.FC = () => {
             </button>
             {!isConcluded && (
                  <button onClick={handleAdvanceStory} disabled={isActionInProgress} className="inline-flex items-center gap-2 bg-teal-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-teal-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed">
-                    {isAdvancing ? <LoadingSpinner /> : (continuationCount === 0 ? <ContinueIcon /> : <ConcludeIcon />)}
-                    {isAdvancing ? (continuationCount === 0 ? 'Continuing...' : 'Concluding...') : (continuationCount === 0 ? 'Continue Story' : 'Conclude Story')}
+                    {isAdvancing ? <LoadingSpinner /> : (storyParts.length < 2 ? <ContinueIcon /> : <ConcludeIcon />)}
+                    {isAdvancing ? (storyParts.length < 2 ? 'Continuing...' : 'Concluding...') : (storyParts.length < 2 ? 'Continue Story' : 'Conclude Story')}
                 </button>
             )}
             <button onClick={handleReadAloud} disabled={isActionInProgress} className="inline-flex items-center gap-2 bg-green-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-green-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed">

@@ -1,6 +1,6 @@
-import React, { useState, useRef, useCallback } from 'react';
-import { generateStoryFromImage, textToSpeech, continueStory, suggestTitles, concludeStory, regenerateChunk, regenerateParagraph, analyzeStoryTone } from '../services/geminiService';
-import { UploadIcon, SparklesIcon, SpeakerIcon, LoadingSpinner, DownloadIcon, HtmlIcon, ContinueIcon, TitleIcon, ConcludeIcon, RegenerateIcon, HintIcon } from './icons/FeatureIcons';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { generateStoryFromImage, textToSpeech, continueStory, suggestTitles, concludeStory, regenerateChunk, regenerateParagraph } from '../services/geminiService';
+import { UploadIcon, SparklesIcon, SpeakerIcon, LoadingSpinner, DownloadIcon, HtmlIcon, ContinueIcon, TitleIcon, ConcludeIcon, RegenerateIcon, HintIcon, PlayIcon, PauseIcon, StopIcon, CancelIcon } from './icons/FeatureIcons';
 
 // Audio decoding utilities
 const decode = (base64: string): Uint8Array => {
@@ -90,7 +90,6 @@ const StoryGenerator: React.FC = () => {
   const [selectedTitle, setSelectedTitle] = useState<string | null>(null);
   
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [isReading, setIsReading] = useState<boolean>(false);
   const [isExportingHtml, setIsExportingHtml] = useState<boolean>(false);
   const [isDownloadingAudio, setIsDownloadingAudio] = useState<boolean>(false);
   const [isAdvancing, setIsAdvancing] = useState<boolean>(false);
@@ -105,17 +104,49 @@ const StoryGenerator: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [generatedAudio, setGeneratedAudio] = useState<string | null>(null);
 
+  // Audio Playback State
+  const [playbackState, setPlaybackState] = useState<'stopped' | 'playing' | 'paused'>('stopped');
+  const [isAudioLoading, setIsAudioLoading] = useState<boolean>(false);
+
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const audioBufferRef = useRef<AudioBuffer | null>(null);
+  const playbackStartTimeRef = useRef<number>(0);
+  const pauseOffsetRef = useRef<number>(0);
+  const generationAbortControllerRef = useRef<AbortController | null>(null);
+  
+  // Cleanup audio resources on unmount
+  useEffect(() => {
+    return () => {
+        if (audioSourceRef.current) {
+            audioSourceRef.current.stop();
+        }
+        if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+            audioContextRef.current.close();
+        }
+    };
+  }, []);
 
   const getFullStoryText = useCallback(() => {
     return storyParts ? storyParts.map(p => p.join(' ')).join('\n\n') : '';
   }, [storyParts]);
 
+  const handleStopPlayback = useCallback(() => {
+    if (audioSourceRef.current) {
+        audioSourceRef.current.onended = null; // Prevent onended from firing
+        try { audioSourceRef.current.stop(); } catch(e) {}
+        audioSourceRef.current = null;
+    }
+    setPlaybackState('stopped');
+    pauseOffsetRef.current = 0;
+  }, []);
+
   const resetStoryState = () => {
     setStoryParts(null);
     setError(null);
+    handleStopPlayback();
     setGeneratedAudio(null);
+    audioBufferRef.current = null;
     setTitles(null);
     setSelectedTitle(null);
   };
@@ -132,9 +163,22 @@ const StoryGenerator: React.FC = () => {
       reader.readAsDataURL(file);
     }
   };
+  
+  const handleCancelGeneration = () => {
+    if (generationAbortControllerRef.current) {
+        generationAbortControllerRef.current.abort();
+        generationAbortControllerRef.current = null;
+        setIsLoading(false);
+        setError("Story generation cancelled.");
+    }
+  };
 
   const handleGenerateStory = useCallback(async () => {
     if (!imageFile) return;
+    
+    handleCancelGeneration(); // Cancel any previous one
+    const controller = new AbortController();
+    generationAbortControllerRef.current = controller;
 
     setIsLoading(true);
     resetStoryState();
@@ -143,19 +187,34 @@ const StoryGenerator: React.FC = () => {
       const reader = new FileReader();
       reader.readAsDataURL(imageFile);
       reader.onloadend = async () => {
-        const base64Data = (reader.result as string).split(',')[1];
-        const generatedParagraph = await generateStoryFromImage(base64Data, imageFile.type, genre, theme);
-        setStoryParts([generatedParagraph]);
+        try {
+            if (controller.signal.aborted) return;
+            const base64Data = (reader.result as string).split(',')[1];
+            const generatedParagraph = await generateStoryFromImage(base64Data, imageFile.type, genre, theme);
+            if (controller.signal.aborted) return;
+            setStoryParts([generatedParagraph]);
+        } catch (err) {
+            if (!controller.signal.aborted) {
+                setError(err instanceof Error ? err.message : 'An unknown error occurred.');
+            }
+        } finally {
+             if (generationAbortControllerRef.current === controller) {
+                setIsLoading(false);
+                generationAbortControllerRef.current = null;
+            }
+        }
       };
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unknown error occurred.');
-    } finally {
       setIsLoading(false);
+      generationAbortControllerRef.current = null;
     }
   }, [imageFile, theme, genre]);
   
   const invalidateSecondaryContent = () => {
+    handleStopPlayback();
     setGeneratedAudio(null);
+    audioBufferRef.current = null;
     setTitles(null);
     setSelectedTitle(null);
   };
@@ -265,58 +324,72 @@ const StoryGenerator: React.FC = () => {
     }
   }, [storyParts, getFullStoryText]);
 
-  const getOrGenerateAudio = useCallback(async (forceNew = false): Promise<string> => {
-    if (generatedAudio && !forceNew) {
+  const getOrGenerateAudio = useCallback(async (): Promise<string> => {
+    if (generatedAudio) {
         return generatedAudio;
     }
     const fullStory = getFullStoryText();
     if (!fullStory) throw new Error("Story is empty.");
     
-    const toneInstruction = await analyzeStoryTone(fullStory);
-    const base64Audio = await textToSpeech(fullStory, toneInstruction);
+    const base64Audio = await textToSpeech(fullStory);
     setGeneratedAudio(base64Audio);
     return base64Audio;
   }, [generatedAudio, getFullStoryText]);
 
 
-  const handleReadAloud = useCallback(async () => {
-    if (isReading) return;
-
-    if (audioSourceRef.current) {
-      audioSourceRef.current.stop();
-      audioSourceRef.current = null;
-    }
-    
-    setIsReading(true);
+  const handlePlaybackControls = useCallback(async () => {
     setError(null);
-    
+    // Handle PAUSE
+    if (playbackState === 'playing') {
+        if (audioSourceRef.current && audioContextRef.current) {
+            pauseOffsetRef.current += audioContextRef.current.currentTime - playbackStartTimeRef.current;
+            audioSourceRef.current.stop();
+            audioSourceRef.current = null;
+        }
+        setPlaybackState('paused');
+        return;
+    }
+
+    // Handle PLAY or RESUME
     try {
         if (!audioContextRef.current) {
             audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
         }
-        const audioContext = audioContextRef.current;
-        await audioContext.resume();
+        await audioContextRef.current.resume();
 
-        const base64Audio = await getOrGenerateAudio();
-        
-        const audioBytes = decode(base64Audio);
-        const audioBuffer = await decodeAudioData(audioBytes, audioContext, 24000, 1);
-        
+        // If starting from scratch or audio is invalidated, load it
+        if (!audioBufferRef.current) {
+            setIsAudioLoading(true);
+            const base64Audio = await getOrGenerateAudio();
+            const audioBytes = decode(base64Audio);
+            audioBufferRef.current = await decodeAudioData(audioBytes, audioContextRef.current, 24000, 1);
+            setIsAudioLoading(false);
+        }
+
+        const audioContext = audioContextRef.current;
         const source = audioContext.createBufferSource();
-        source.buffer = audioBuffer;
+        source.buffer = audioBufferRef.current;
         source.connect(audioContext.destination);
         source.onended = () => {
-          setIsReading(false);
-          audioSourceRef.current = null;
+            // Only set to stopped if it wasn't manually stopped or paused
+            if (audioSourceRef.current === source) {
+                handleStopPlayback();
+            }
         };
-        source.start();
+
+        playbackStartTimeRef.current = audioContext.currentTime;
+        source.start(0, pauseOffsetRef.current % source.buffer.duration);
+        
         audioSourceRef.current = source;
+        setPlaybackState('playing');
 
     } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to play audio.');
-        setIsReading(false);
+        setIsAudioLoading(false);
+        handleStopPlayback();
     }
-}, [isReading, getOrGenerateAudio]);
+  }, [playbackState, getOrGenerateAudio, handleStopPlayback]);
+
 
   const handleExportHtml = async () => {
     if (!getFullStoryText() || !image) return;
@@ -399,7 +472,7 @@ const StoryGenerator: React.FC = () => {
     }
   };
 
-  const isActionInProgress = isLoading || isReading || isDownloadingAudio || isExportingHtml || isAdvancing || isSuggestingTitles || regeneratingIndex !== null || regeneratingParagraph !== null;
+  const isActionInProgress = isLoading || isAudioLoading || isDownloadingAudio || isExportingHtml || isAdvancing || isSuggestingTitles || regeneratingIndex !== null || regeneratingParagraph !== null;
   const isConcluded = storyParts && storyParts.length >= 3;
 
   return (
@@ -440,14 +513,25 @@ const StoryGenerator: React.FC = () => {
                 <input id="story-theme" type="text" value={theme} onChange={(e) => setTheme(e.target.value)} placeholder="e.g., a lost artifact" className="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-shadow"/>
             </div>
           </div>
-          <button
-            onClick={handleGenerateStory}
-            disabled={!image || isLoading}
-            className="flex items-center justify-center gap-2 w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 transition-all duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed transform hover:scale-105 disabled:scale-100"
-          >
-            {isLoading ? <LoadingSpinner /> : <SparklesIcon />}
-            {isLoading ? 'Generating...' : 'Generate Story'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleGenerateStory}
+              disabled={!image || isLoading}
+              className="flex items-center justify-center gap-2 flex-grow bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 transition-all duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed transform hover:scale-105 disabled:scale-100"
+            >
+              {isLoading ? <LoadingSpinner /> : <SparklesIcon />}
+              {isLoading ? 'Generating...' : 'Generate Story'}
+            </button>
+            {isLoading && (
+                <button 
+                    onClick={handleCancelGeneration} 
+                    className="flex-shrink-0 bg-red-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-red-700 transition-colors duration-200"
+                    title="Cancel Generation"
+                >
+                    <CancelIcon />
+                </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -598,25 +682,33 @@ const StoryGenerator: React.FC = () => {
           )}
 
           <div className="mt-6 flex flex-wrap gap-4 justify-end">
-            <button onClick={handleSuggestTitles} disabled={isActionInProgress} className="inline-flex items-center gap-2 bg-teal-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-teal-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed">
+            <button onClick={handleSuggestTitles} disabled={isActionInProgress || playbackState !== 'stopped'} className="inline-flex items-center gap-2 bg-teal-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-teal-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed">
               {isSuggestingTitles ? <LoadingSpinner /> : <TitleIcon />}
               {isSuggestingTitles ? 'Suggesting...' : 'Suggest Titles'}
             </button>
             {!isConcluded && (
-                 <button onClick={handleAdvanceStory} disabled={isActionInProgress} className="inline-flex items-center gap-2 bg-teal-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-teal-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed">
+                 <button onClick={handleAdvanceStory} disabled={isActionInProgress || playbackState !== 'stopped'} className="inline-flex items-center gap-2 bg-teal-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-teal-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed">
                     {isAdvancing ? <LoadingSpinner /> : (storyParts.length < 2 ? <ContinueIcon /> : <ConcludeIcon />)}
                     {isAdvancing ? (storyParts.length < 2 ? 'Continuing...' : 'Concluding...') : (storyParts.length < 2 ? 'Continue Story' : 'Conclude Story')}
                 </button>
             )}
-            <button onClick={handleReadAloud} disabled={isActionInProgress} className="inline-flex items-center gap-2 bg-green-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-green-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed">
-              {isReading ? <LoadingSpinner /> : <SpeakerIcon />}
-              {isReading ? 'Reading...' : 'Read Aloud'}
+            
+            <button onClick={handlePlaybackControls} disabled={isActionInProgress || isAudioLoading} className="inline-flex items-center gap-2 bg-green-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-green-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed">
+              {isAudioLoading ? <LoadingSpinner /> : (playbackState === 'playing' ? <PauseIcon /> : (playbackState === 'paused' ? <PlayIcon /> : <SpeakerIcon />) )}
+              {isAudioLoading ? 'Loading...' : (playbackState === 'playing' ? 'Pause' : (playbackState === 'paused' ? 'Resume' : 'Read Aloud'))}
             </button>
-            <button onClick={handleDownloadAudio} disabled={isActionInProgress} className="inline-flex items-center gap-2 bg-sky-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-sky-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed">
+            {playbackState !== 'stopped' && (
+                 <button onClick={handleStopPlayback} className="inline-flex items-center gap-2 bg-red-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-red-700 transition-colors duration-200">
+                    <StopIcon />
+                    Stop
+                </button>
+            )}
+
+            <button onClick={handleDownloadAudio} disabled={isActionInProgress || playbackState !== 'stopped'} className="inline-flex items-center gap-2 bg-sky-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-sky-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed">
               {isDownloadingAudio ? <LoadingSpinner /> : <DownloadIcon />}
               {isDownloadingAudio ? 'Preparing...' : 'Download Audio'}
             </button>
-            <button onClick={handleExportHtml} disabled={isActionInProgress} className="inline-flex items-center gap-2 bg-purple-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-purple-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed">
+            <button onClick={handleExportHtml} disabled={isActionInProgress || playbackState !== 'stopped'} className="inline-flex items-center gap-2 bg-purple-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-purple-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed">
               {isExportingHtml ? <LoadingSpinner /> : <HtmlIcon />}
               {isExportingHtml ? 'Exporting...' : 'Export HTML'}
             </button>

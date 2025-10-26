@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { generateStoryFromImage, textToSpeech, continueStory, suggestTitles, concludeStory, regenerateChunk, regenerateParagraph } from '../services/geminiService';
-import { UploadIcon, SparklesIcon, SpeakerIcon, LoadingSpinner, DownloadIcon, HtmlIcon, ContinueIcon, TitleIcon, ConcludeIcon, RegenerateIcon, HintIcon, PlayIcon, PauseIcon, StopIcon, CancelIcon } from './icons/FeatureIcons';
+import { generateStoryFromImage, textToSpeech, continueStory, suggestTitles, concludeStory, regenerateChunk, regenerateParagraph, refineStory } from '../services/geminiService';
+import { UploadIcon, SparklesIcon, SpeakerIcon, LoadingSpinner, DownloadIcon, HtmlIcon, ContinueIcon, TitleIcon, ConcludeIcon, RegenerateIcon, HintIcon, PlayIcon, PauseIcon, StopIcon, CancelIcon, RefineIcon } from './icons/FeatureIcons';
 
 // Audio decoding utilities
 const decode = (base64: string): Uint8Array => {
@@ -94,6 +94,7 @@ const StoryGenerator: React.FC = () => {
   const [isDownloadingAudio, setIsDownloadingAudio] = useState<boolean>(false);
   const [isAdvancing, setIsAdvancing] = useState<boolean>(false);
   const [isSuggestingTitles, setIsSuggestingTitles] = useState<boolean>(false);
+  const [isRefining, setIsRefining] = useState<boolean>(false);
   
   const [regeneratingIndex, setRegeneratingIndex] = useState<{ p: number; c: number } | null>(null);
   const [editingHintFor, setEditingHintFor] = useState<{ p: number; c: number } | null>(null);
@@ -324,6 +325,29 @@ const StoryGenerator: React.FC = () => {
     }
   }, [storyParts, getFullStoryText]);
 
+  const handleRefineStory = useCallback(async () => {
+    if (!storyParts) return;
+
+    setIsRefining(true);
+    setError(null);
+    try {
+        const currentStory = getFullStoryText();
+        const refinedStoryParts = await refineStory(currentStory);
+        
+        if (refinedStoryParts && refinedStoryParts.length > 0) {
+            setStoryParts(refinedStoryParts);
+            invalidateSecondaryContent();
+        } else {
+            throw new Error("The AI returned an empty story. Please try again.");
+        }
+
+    } catch (err) {
+        setError(err instanceof Error ? err.message : `Failed to refine the story.`);
+    } finally {
+        setIsRefining(false);
+    }
+  }, [storyParts, getFullStoryText]);
+
   const getOrGenerateAudio = useCallback(async (): Promise<string> => {
     if (generatedAudio) {
         return generatedAudio;
@@ -472,7 +496,7 @@ const StoryGenerator: React.FC = () => {
     }
   };
 
-  const isActionInProgress = isLoading || isAudioLoading || isDownloadingAudio || isExportingHtml || isAdvancing || isSuggestingTitles || regeneratingIndex !== null || regeneratingParagraph !== null;
+  const isActionInProgress = isLoading || isAudioLoading || isDownloadingAudio || isExportingHtml || isAdvancing || isSuggestingTitles || regeneratingIndex !== null || regeneratingParagraph !== null || isRefining;
   const isConcluded = storyParts && storyParts.length >= 3;
 
   return (
@@ -690,6 +714,12 @@ const StoryGenerator: React.FC = () => {
                  <button onClick={handleAdvanceStory} disabled={isActionInProgress || playbackState !== 'stopped'} className="inline-flex items-center gap-2 bg-teal-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-teal-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed">
                     {isAdvancing ? <LoadingSpinner /> : (storyParts.length < 2 ? <ContinueIcon /> : <ConcludeIcon />)}
                     {isAdvancing ? (storyParts.length < 2 ? 'Continuing...' : 'Concluding...') : (storyParts.length < 2 ? 'Continue Story' : 'Conclude Story')}
+                </button>
+            )}
+            {isConcluded && (
+                <button onClick={handleRefineStory} disabled={isActionInProgress || playbackState !== 'stopped'} className="inline-flex items-center gap-2 bg-yellow-500 text-white font-bold py-2 px-5 rounded-lg hover:bg-yellow-600 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed">
+                  {isRefining ? <LoadingSpinner /> : <RefineIcon />}
+                  {isRefining ? 'Affinando...' : 'Affina Storia'}
                 </button>
             )}
             

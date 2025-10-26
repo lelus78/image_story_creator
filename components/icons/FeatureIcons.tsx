@@ -110,3 +110,9 @@ export const CancelIcon = () => (
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
     </svg>
 );
+
+export const RefineIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9.5 2.5l1.5 3 1.5-3L14.5 7l-2-1.5-2 1.5L8.5 7l1-4.5zM5 21l3-3-1-4-4-1 3-3-4-1-1 4 3 3-3 3zm14-11l-3 3-1-4-4-1 3-3-4-1-1 4 3 3-3 3zM4.75 19.25L17.25 6.75" />
+    </svg>
+);

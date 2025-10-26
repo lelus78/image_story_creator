@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Modality, Type } from "@google/genai";
 import { ChatMessage } from '../types';
 
@@ -457,5 +456,57 @@ export const chatWithBot = async (history: ChatMessage[], message: string): Prom
     } catch (error) {
         console.error("Error chatting with bot:", error);
         throw new Error("I'm having trouble responding right now. Please try again later.");
+    }
+};
+
+export const refineStory = async (existingStory: string): Promise<string[][]> => {
+    try {
+        const prompt = `Sei un editor letterario di eccezionale talento. Il tuo compito è revisionare e armonizzare la seguente storia. Non devi alterare la trama, i personaggi o gli eventi principali. Il tuo obiettivo è migliorare la qualità della prosa.
+
+Concentrati su:
+- Correggere qualsiasi errore grammaticale o di battitura.
+- Migliorare il flusso e il ritmo delle frasi.
+- Garantire uno stile e un tono coerenti in tutta la narrazione.
+- Sostituire parole o riformulare frasi per un maggiore impatto emotivo ed evocativo.
+- Assicurarti che le transizioni tra i paragrafi siano fluide.
+
+Restituisci l'intera storia revisionata in formato JSON, con una chiave "refinedStory" che contiene un array di paragrafi. Ogni paragrafo deve essere a sua volta un array di stringhe (frasi o frammenti di frase coerenti).
+
+STORIA ORIGINALE:
+---
+${existingStory}
+---`;
+        
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        refinedStory: {
+                            type: Type.ARRAY,
+                            items: {
+                                type: Type.ARRAY,
+                                description: "Un singolo paragrafo, suddiviso in frasi.",
+                                items: {
+                                    type: Type.STRING,
+                                    description: "Una singola frase o un frammento coerente del paragrafo."
+                                }
+                            },
+                        },
+                    },
+                    required: ["refinedStory"],
+                },
+            },
+        });
+        
+        const jsonResponse = JSON.parse(response.text);
+        return jsonResponse.refinedStory || [];
+
+    } catch (error) {
+        console.error("Error refining story:", error);
+        throw new Error("Failed to refine the story. Please try again.");
     }
 };

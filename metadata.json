@@ -1,0 +1,5 @@
+{
+  "name": "AI Story Weaver & Chat",
+  "description": "Upload an image to generate a story's opening paragraph, then listen to it narrated by an AI voice. Also features a helpful AI chatbot for your questions.",
+  "requestFramePermissions": []
+}

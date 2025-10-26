@@ -50,6 +50,21 @@ const genreInstructions: Record<string, { opening: string, continuation: string,
         opening: "Descrivi un incontro significativo o un momento cruciale che accende la scintilla tra due personaggi. Concentrati sui loro sentimenti interiori, sulle prime impressioni e sulla tensione emotiva che si crea tra loro.",
         continuation: "Sviluppa la relazione. Esplora gli ostacoli (interni o esterni) che i personaggi devono superare. La narrazione deve essere guidata dal dialogo, dai gesti e dall'evoluzione dei loro sentimenti.",
         conclusion: "Porta la storia d'amore a una risoluzione emotivamente appagante. I personaggi superano gli ostacoli finali e dichiarano i loro sentimenti, culminando in un momento di unione e felicità che lasci il lettore soddisfatto."
+    },
+    "Adventure": {
+        opening: "Lancia il protagonista in un viaggio verso l'ignoto. Inizia con la scoperta di una mappa, un artefatto misterioso o una chiamata all'azione irresistibile. L'ambientazione deve promettere pericolo ed eccitazione.",
+        continuation: "Sviluppa il viaggio con ostacoli e scoperte. Il protagonista deve superare trappole, risolvere enigmi antichi o affrontare rivali in luoghi esotici e pericolosi. Il ritmo deve essere incalzante.",
+        conclusion: "Raggiungi la destinazione finale con una rivelazione o il conseguimento dell'obiettivo. Il tesoro viene trovato, il mistero risolto. La conclusione deve essere un culmine trionfante dell'avventura intrapresa."
+    },
+    "Thriller": {
+        opening: "Inizia con un evento ad alta tensione che mette immediatamente il protagonista in pericolo o di fronte a una minaccia imminente. Stabilisci subito la posta in gioco e un senso di urgenza, un 'ticking clock'.",
+        continuation: "Aumenta la pressione e la suspense. Il protagonista è braccato, il tempo stringe. Introduci colpi di scena, tradimenti e false piste che complicano la situazione e lo spingono al limite.",
+        conclusion: "Concludi con uno scontro finale esplosivo e una risoluzione al cardiopalma. La minaccia viene neutralizzata, ma forse a un costo elevato. Il finale deve essere rapido, intenso e risolutivo."
+    },
+    "Humor": {
+        opening: "Presenta una situazione di partenza normale che viene stravolta da un evento assurdo o un malinteso comico. Introduci un protagonista con una personalità eccentrica o un difetto divertente.",
+        continuation: "Escala la comicità attraverso una serie di eventi a catena sempre più surreali. Usa dialoghi brillanti, situazioni imbarazzanti e l'ironia della sorte per far avanzare la trama.",
+        conclusion: "Risolvi il caos in un modo inaspettato e divertente, che spesso riporta la situazione a una 'nuova normalità' ancora più strana di quella iniziale. Termina con una battuta finale o un'immagine comica."
     }
 };
 

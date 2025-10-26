@@ -80,6 +80,82 @@ const blobToBase64 = (blob: Blob): Promise<string> => {
     });
 };
 
+const getThemeCss = (genre: string): string => {
+    switch (genre) {
+        case 'Sci-Fi':
+            return `
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700&family=Roboto+Mono&display=swap');
+        body { font-family: 'Roboto Mono', monospace; line-height: 1.7; background-color: #0c0c1e; color: #a7d1d2; margin: 0; padding: 2rem; background-image: radial-gradient(circle at top right, rgba(0, 229, 255, 0.15), transparent 50%), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'%3E%3Cg fill-rule='evenodd'%3E%3Cg fill='%230e2030' fill-opacity='0.4'%3E%3Cpath d='M0 38.59l2.83-2.83 1.41 1.41L1.41 40H0v-1.41zM0 1.4l2.83 2.83 1.41-1.41L1.41 0H0v1.41zM38.59 40l-2.83-2.83 1.41-1.41L40 38.59V40h-1.41zM40 1.41l-2.83 2.83-1.41-1.41L38.59 0H40v1.41zM20 18.6l2.83-2.83 1.41 1.41L21.41 20l2.83 2.83-1.41 1.41L20 21.41l-2.83 2.83-1.41-1.41L18.59 20l-2.83-2.83 1.41-1.41L20 18.59z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E"); }
+        .container { max-width: 800px; margin: 0 auto; background-color: rgba(10, 25, 47, 0.8); border-radius: 0.75rem; padding: 2.5rem; border: 1px solid #00e5ff; box-shadow: 0 0 20px rgba(0, 229, 255, 0.3); backdrop-filter: blur(5px); }
+        img { max-width: 100%; border-radius: 0.5rem; margin-bottom: 1.5rem; border: 2px solid #00a1b5; }
+        h1 { font-family: 'Orbitron', sans-serif; color: #00e5ff; font-size: 2rem; margin-bottom: 1rem; text-shadow: 0 0 10px #00e5ff; }
+        p { color: #d1d5db; margin-bottom: 1em; }
+        audio { width: 100%; margin-top: 2rem; filter: hue-rotate(180deg) brightness(1.2); }`;
+        case 'Horror':
+            return `
+        @import url('https://fonts.googleapis.com/css2?family=Creepster&family=EB+Garamond&display=swap');
+        body { font-family: 'EB Garamond', serif; line-height: 1.6; background-color: #000000; color: #cccccc; margin: 0; padding: 2rem; background-image: radial-gradient(circle, transparent, #000 80%), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'%3E%3Cg fill='%232c0000' fill-opacity='0.2'%3E%3Cpath fill-rule='evenodd' d='M11 0l5 20-5-5-5 5L11 0zM31 0l5 20-5-5-5 5L31 0zM51 0l5 20-5-5-5 5L51 0zM71 0l5 20-5-5-5 5L71 0zM91 0l5 20-5-5-5 5L91 0zM11 100l5-20-5 5-5-5L11 100zM31 100l5-20-5 5-5-5L31 100zM51 100l5-20-5 5-5-5L51 100zM71 100l5-20-5 5-5-5L71 100zM91 100l5-20-5 5-5-5L91 100zM0 11l20 5-5-5-5-5L0 11zM0 31l20 5-5-5-5-5L0 31zM0 51l20 5-5-5-5-5L0 51zM0 71l20 5-5-5-5-5L0 71zM0 91l20 5-5-5-5-5L0 91zM100 11l-20 5 5-5 5-5L100 11zM100 31l-20 5 5-5 5-5L100 31zM100 51l-20 5 5-5 5-5L100 51zM100 71l-20 5 5-5 5-5L100 71zM100 91l-20 5 5-5 5-5L100 91z'/%3E%3C/g%3E%3C/svg%3E"); }
+        .container { max-width: 700px; margin: 0 auto; background-color: #100000; border-radius: 0.25rem; padding: 2rem; border: 1px solid #660000; box-shadow: inset 0 0 15px #000; }
+        img { max-width: 100%; border-radius: 0.25rem; margin-bottom: 1.5rem; filter: grayscale(80%) contrast(1.2); }
+        h1 { font-family: 'Creepster', cursive; color: #b90000; font-size: 2.5rem; letter-spacing: 2px; margin-bottom: 1rem; text-shadow: 0 0 5px #ff0000; }
+        p { color: #a0a0a0; margin-bottom: 1em; }
+        audio { width: 100%; margin-top: 2rem; }`;
+        case 'Mystery':
+            return `
+        @import url('https://fonts.googleapis.com/css2?family=Special+Elite&display=swap');
+        body { font-family: 'Special Elite', monospace; line-height: 1.8; background-color: #3d352a; color: #1a1815; margin: 0; padding: 2rem; background-image: radial-gradient(ellipse at center, rgba(253, 246, 227, 0.1) 0%, transparent 70%), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4' viewBox='0 0 4 4'%3E%3Cpath fill='%239C92AC' fill-opacity='0.05' d='M1 3h1v1H1V3zm2-2h1v1H3V1z'%3E%3C/path%3E%3C/svg%3E"); }
+        .container { max-width: 800px; margin: 0 auto; background-color: #fdf6e3; border-radius: 0; padding: 3rem; border: 1px solid #d3c2a6; box-shadow: 0 5px 15px rgba(0,0,0,0.4); }
+        img { max-width: 100%; border-radius: 0; margin-bottom: 1.5rem; filter: sepia(0.7) contrast(1.1) brightness(0.9); }
+        h1 { color: #585040; font-size: 2rem; margin-bottom: 1.5rem; text-align: center; border-bottom: 2px solid #bda888; padding-bottom: 0.5rem; }
+        p { color: #3d3830; margin-bottom: 1em; text-align: justify; }
+        audio { width: 100%; margin-top: 2rem; }`;
+        case 'Romance':
+            return `
+        @import url('https://fonts.googleapis.com/css2?family=Dancing+Script:wght@700&family=Lato&display=swap');
+        body { font-family: 'Lato', sans-serif; line-height: 1.7; background: linear-gradient(135deg, #fce3ec 0%, #fde4e4 50%, #e6e9f9 100%); color: #5c3740; margin: 0; padding: 2rem; }
+        .container { max-width: 750px; margin: 0 auto; background-color: rgba(255, 255, 255, 0.8); backdrop-filter: blur(10px); border-radius: 1rem; padding: 2.5rem; border: 1px solid #f2dbe0; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05); }
+        img { max-width: 100%; border-radius: 0.75rem; margin-bottom: 1.5rem; }
+        h1 { font-family: 'Dancing Script', cursive; color: #d6336c; font-size: 2.8rem; text-align: center; margin-bottom: 1.5rem; }
+        p { color: #6d4b53; margin-bottom: 1em; }
+        audio { width: 100%; margin-top: 2rem; }`;
+        case 'Adventure':
+             return `
+        @import url('https://fonts.googleapis.com/css2?family=IM+Fell+English+SC&family=Merriweather&display=swap');
+        body { font-family: 'Merriweather', serif; line-height: 1.7; background-color: #f5f1e9; color: #3a2e1d; margin: 0; padding: 2rem; background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyCAYAAAAeP4ixAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAyJpVFh0WE1MOmNvbS5hZG9iZS54bXAAAAAAADw/eHBhY2tldCBiZWdpbj0i77u/IiBpZD0iVzVNME1wQ2VoaUh6cmVTek5UY3prYzlkIj8+IDx4OnhtcG1ldGEgeG1sbnM6eD0iYWRvYmU6bnM6bWV0YS8iIHg6eG1wdGs9IkFkb2JlIFhNUCBDb3JlIDUuMy1jMDExIDY2LjE0NTY2MSwgMjAxMi8wMi8wNi0xNDo1NjoyNyAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1sbnM6c3RSZWY9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZVJlZiMiIHhtcDpDcmVhdG9yVG9vbD0iQWRvYmUgUGhvdG9zaG9wIENTNiAoV2luZG93cykiIHhtcE1NOkluc3RhbmNlSUQ9InhtcC5paWQ6NkY4Q0Q3QjE3RDdDMTFFN0FBN0VDMDI4Njc0RTBDOTAiIHhtcE1NOkRvY3VtZW50SUQ9InhtcC5kaWQ6NkY4Q0Q3QjI3RDdDMTFFN0FBN0VDMDI4Njc0RTBDOTAiPiA8eG1wTU06RGVyaXZlZEZyb20gc3RSZWY6aW5zdGFuY2VJRD0ieG1wLmlpZDo2RjhDRDdBRjdEN0MxMUU3QUE3RUMwMjg2NzRFMEM5MCIgc3RSZWY6ZG9jdW1lbnRJRD0ieG1wLmRpZDo2RjhDRDdCMDBEN0MxMUU3QUE3RUMwMjg2NzRFMEM5MCIvPiA8L3JkZjpEZXNjcmlwdGlvbj4gPC9yZGY6UkRGPiA8L3g6eG1wYWNrZXQ+IDw/eHBhY2tldCBlbmQ9InIiPz6aJ2VlAAAAsUlEQVR42uzasQ3CQAxA0U6EaNS0QZlo0sQYxY3oUM3CRk3K/QkCwfE47sE/kO9iJ7uXmUwm828GAA+gC3AC3MM3gA7gE/QBbsBPAM/zB3ADrIB2gA/AGrABHoAEeAOWwCzYAb4AUwAnwAVwDRwD34CXwI+ABPAEtAGCwIvgS/An0BsoBF4E/gStAn8C3wL/An8CPwI/Am+BjcAPwb/Bj8CzwI/Au8CXwE5gJ7A3sDeYyWSy+wswAF+e1e/g9N5lAAAAAElFTkSuQmCC"); }
+        .container { max-width: 800px; margin: 0 auto; background-color: #e8e2d4; border-radius: 0.5rem; padding: 2.5rem; border: 3px solid #8c785d; box-shadow: 0 0 20px rgba(0,0,0,0.2); }
+        img { max-width: 100%; border-radius: 0.25rem; margin-bottom: 1.5rem; border: 1px solid #c5b8a3; }
+        h1 { font-family: 'IM Fell English SC', serif; color: #6b4f2c; font-size: 2.5rem; text-align: center; margin-bottom: 1.5rem; }
+        p { color: #4a3c2a; margin-bottom: 1em; }
+        audio { width: 100%; margin-top: 2rem; }`;
+        case 'Thriller':
+             return `
+        @import url('https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@700&family=Open+Sans&display=swap');
+        body { font-family: 'Open Sans', sans-serif; line-height: 1.6; background-color: #111; color: #e5e5e5; margin: 0; padding: 2rem; background-image: linear-gradient(45deg, #222 25%, transparent 25%, transparent 75%, #222 75%, #222), linear-gradient(45deg, #222 25%, transparent 25%, transparent 75%, #222 75%, #222); background-size: 60px 60px; background-position: 0 0, 30px 30px; }
+        .container { max-width: 800px; margin: 0 auto; background-color: #1a1a1a; border-radius: 0; padding: 2rem; border-left: 5px solid #ffc700; }
+        img { max-width: 100%; border-radius: 0; margin-bottom: 1.5rem; filter: grayscale(100%) contrast(1.3); }
+        h1 { font-family: 'Roboto Condensed', sans-serif; color: #ffc700; font-size: 2.2rem; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 1rem; }
+        p { color: #c0c0c0; margin-bottom: 1em; }
+        audio { width: 100%; margin-top: 2rem; }`;
+        case 'Humor':
+             return `
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@700&family=Nunito&display=swap');
+        body { font-family: 'Nunito', sans-serif; line-height: 1.6; background-color: #e0f7fa; color: #333; margin: 0; padding: 2rem; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20'%3E%3Cg fill='%2300aaff' fill-opacity='0.1'%3E%3Ccircle cx='10' cy='10' r='10'/%3E%3C/g%3E%3C/svg%3E"); }
+        .container { max-width: 800px; margin: 0 auto; background-color: #ffffff; border-radius: 1rem; padding: 2rem; border: 2px solid #00aaff; }
+        img { max-width: 100%; border-radius: 0.75rem; margin-bottom: 1.5rem; }
+        h1 { font-family: 'Poppins', sans-serif; color: #ff6347; font-size: 2.3rem; text-align: center; margin-bottom: 1rem; }
+        p { color: #4f4f4f; margin-bottom: 1em; }
+        audio { width: 100%; margin-top: 2rem; }`;
+        default: // Fantasy theme as default
+            return `
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; background: #090a0f; background: radial-gradient(ellipse at bottom, #1b2735 0%, #090a0f 100%); color: #f3f4f6; margin: 0; padding: 2rem; }
+        .container { max-width: 800px; margin: 0 auto; background-color: rgba(31, 41, 55, 0.7); backdrop-filter: blur(5px); border-radius: 0.75rem; padding: 2rem; border: 1px solid #374151; }
+        img { max-width: 100%; border-radius: 0.5rem; margin-bottom: 1.5rem; }
+        h1 { color: #a5b4fc; font-size: 1.875rem; margin-bottom: 1rem; }
+        p { color: #d1d5db; margin-bottom: 1em; }
+        audio { width: 100%; margin-top: 2rem; }`;
+    }
+};
+
 const StoryGenerator: React.FC = () => {
   const [image, setImage] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -429,6 +505,8 @@ const StoryGenerator: React.FC = () => {
         const storyTitle = selectedTitle || (titles ? titles[0] : "AI Generated Story");
 
         const storyHtml = storyParts?.map(p => `<p>${p.map(chunk => chunk.replace(/</g, "&lt;").replace(/>/g, "&gt;")).join(' ')}</p>`).join('') || '';
+        
+        const themeCss = getThemeCss(genre);
 
         const pageHtml = `
 <!DOCTYPE html>
@@ -438,12 +516,7 @@ const StoryGenerator: React.FC = () => {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${storyTitle}</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; background-color: #111827; color: #f3f4f6; margin: 0; padding: 2rem; }
-        .container { max-width: 800px; margin: 0 auto; background-color: #1f2937; border-radius: 0.75rem; padding: 2rem; border: 1px solid #374151; }
-        img { max-width: 100%; border-radius: 0.5rem; margin-bottom: 1.5rem; }
-        h1 { color: #a5b4fc; font-size: 1.875rem; margin-bottom: 1rem; }
-        p { color: #d1d5db; margin-bottom: 1em; }
-        audio { width: 100%; margin-top: 2rem; }
+        ${themeCss}
     </style>
 </head>
 <body>
@@ -525,11 +598,14 @@ const StoryGenerator: React.FC = () => {
              <div>
                 <label htmlFor="story-genre" className="block text-sm font-medium text-gray-300 mb-2">Genre</label>
                 <select id="story-genre" value={genre} onChange={(e) => setGenre(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-shadow">
-                    <option>Fantasy</option>
-                    <option>Sci-Fi</option>
-                    <option>Horror</option>
-                    <option>Mystery</option>
-                    <option>Romance</option>
+                    <option value="Fantasy">Fantasy</option>
+                    <option value="Sci-Fi">Sci-Fi</option>
+                    <option value="Horror">Horror</option>
+                    <option value="Mystery">Mystery</option>
+                    <option value="Romance">Romance</option>
+                    <option value="Adventure">Avventura</option>
+                    <option value="Thriller">Thriller</option>
+                    <option value="Humor">Umorismo</option>
                 </select>
             </div>
             <div>

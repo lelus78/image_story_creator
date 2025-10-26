@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback } from 'react';
-import { generateStoryFromImage, textToSpeech } from '../services/geminiService';
-import { UploadIcon, SparklesIcon, SpeakerIcon, LoadingSpinner, DownloadIcon, HtmlIcon } from './icons/FeatureIcons';
+import { generateStoryFromImage, textToSpeech, continueStory, suggestTitles, concludeStory } from '../services/geminiService';
+import { UploadIcon, SparklesIcon, SpeakerIcon, LoadingSpinner, DownloadIcon, HtmlIcon, ContinueIcon, TitleIcon, ConcludeIcon } from './icons/FeatureIcons';
 
 // Audio decoding utilities
 const decode = (base64: string): Uint8Array => {
@@ -85,17 +85,36 @@ const StoryGenerator: React.FC = () => {
   const [image, setImage] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [theme, setTheme] = useState<string>('');
+  const [genre, setGenre] = useState<string>('Fantasy');
   const [story, setStory] = useState<string | null>(null);
+  const [titles, setTitles] = useState<string[] | null>(null);
+  const [selectedTitle, setSelectedTitle] = useState<string | null>(null);
+  
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isReading, setIsReading] = useState<boolean>(false);
   const [isExportingHtml, setIsExportingHtml] = useState<boolean>(false);
   const [isDownloadingAudio, setIsDownloadingAudio] = useState<boolean>(false);
+  const [isAdvancing, setIsAdvancing] = useState<boolean>(false);
+  const [isSuggestingTitles, setIsSuggestingTitles] = useState<boolean>(false);
+  const [isConcluded, setIsConcluded] = useState<boolean>(false);
+  const [continuationCount, setContinuationCount] = useState<number>(0);
+
+
   const [error, setError] = useState<string | null>(null);
   const [generatedAudio, setGeneratedAudio] = useState<string | null>(null);
 
-
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
+
+  const resetStoryState = () => {
+    setStory(null);
+    setError(null);
+    setGeneratedAudio(null);
+    setTitles(null);
+    setSelectedTitle(null);
+    setContinuationCount(0);
+    setIsConcluded(false);
+  };
 
   const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -104,9 +123,7 @@ const StoryGenerator: React.FC = () => {
       const reader = new FileReader();
       reader.onloadend = () => {
         setImage(reader.result as string);
-        setStory(null);
-        setError(null);
-        setGeneratedAudio(null);
+        resetStoryState();
       };
       reader.readAsDataURL(file);
     }
@@ -116,16 +133,14 @@ const StoryGenerator: React.FC = () => {
     if (!imageFile) return;
 
     setIsLoading(true);
-    setError(null);
-    setStory(null);
-    setGeneratedAudio(null);
+    resetStoryState();
 
     try {
       const reader = new FileReader();
       reader.readAsDataURL(imageFile);
       reader.onloadend = async () => {
         const base64Data = (reader.result as string).split(',')[1];
-        const generatedStory = await generateStoryFromImage(base64Data, imageFile.type, theme);
+        const generatedStory = await generateStoryFromImage(base64Data, imageFile.type, theme, genre);
         setStory(generatedStory);
       };
     } catch (err) {
@@ -133,7 +148,55 @@ const StoryGenerator: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [imageFile, theme]);
+  }, [imageFile, theme, genre]);
+  
+  const invalidateSecondaryContent = () => {
+    setGeneratedAudio(null);
+    setTitles(null);
+    setSelectedTitle(null);
+  };
+
+  const handleAdvanceStory = useCallback(async () => {
+    if (!story) return;
+
+    setIsAdvancing(true);
+    setError(null);
+    try {
+        let nextParagraph: string;
+        if (continuationCount === 0) {
+            nextParagraph = await continueStory(story);
+            setContinuationCount(1);
+        } else {
+            nextParagraph = await concludeStory(story);
+            setIsConcluded(true);
+        }
+        
+        setStory(prevStory => (prevStory + '\n\n' + nextParagraph).trim());
+        invalidateSecondaryContent();
+
+    } catch (err) {
+        setError(err instanceof Error ? err.message : `Failed to ${continuationCount === 0 ? 'continue' : 'conclude'} the story.`);
+    } finally {
+        setIsAdvancing(false);
+    }
+  }, [story, continuationCount]);
+
+  const handleSuggestTitles = useCallback(async () => {
+    if (!story) return;
+
+    setIsSuggestingTitles(true);
+    setTitles(null);
+    setSelectedTitle(null);
+    setError(null);
+    try {
+        const suggestedTitles = await suggestTitles(story);
+        setTitles(suggestedTitles);
+    } catch (err) {
+        setError(err instanceof Error ? err.message : 'An unknown error occurred while suggesting titles.');
+    } finally {
+        setIsSuggestingTitles(false);
+    }
+  }, [story]);
 
   const handleReadAloud = useCallback(async () => {
     if (!story || isReading) return;
@@ -183,76 +246,39 @@ const StoryGenerator: React.FC = () => {
     setError(null);
 
     try {
-        // Step 1: Generate Audio if it doesn't exist
         const audioB64 = generatedAudio || await textToSpeech(story);
-        if (!generatedAudio) {
-            setGeneratedAudio(audioB64);
-        }
-
-        // Step 2: Create WAV Blob and convert to Data URI for embedding
+        if (!generatedAudio) setGeneratedAudio(audioB64);
         const audioBytes = decode(audioB64);
         const wavBlob = createWavBlob(audioBytes, { sampleRate: 24000, numChannels: 1, bitsPerSample: 16 });
         const audioDataUri = await blobToBase64(wavBlob);
+        const storyTitle = selectedTitle || (titles ? titles[0] : "AI Generated Story");
 
-        // Step 3: Construct the self-contained HTML document
         const pageHtml = `
 <!DOCTYPE html>
 <html lang="it">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Generated Story</title>
+    <title>${storyTitle}</title>
     <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            line-height: 1.6;
-            background-color: #111827;
-            color: #f3f4f6;
-            margin: 0;
-            padding: 2rem;
-        }
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-            background-color: #1f2937;
-            border-radius: 0.75rem;
-            padding: 2rem;
-            border: 1px solid #374151;
-        }
-        img {
-            max-width: 100%;
-            border-radius: 0.5rem;
-            margin-bottom: 1.5rem;
-        }
-        h1 {
-            color: #a5b4fc;
-            font-size: 1.875rem;
-            margin-bottom: 1rem;
-        }
-        p {
-            white-space: pre-wrap;
-            color: #d1d5db;
-        }
-        audio {
-            width: 100%;
-            margin-top: 2rem;
-        }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; background-color: #111827; color: #f3f4f6; margin: 0; padding: 2rem; }
+        .container { max-width: 800px; margin: 0 auto; background-color: #1f2937; border-radius: 0.75rem; padding: 2rem; border: 1px solid #374151; }
+        img { max-width: 100%; border-radius: 0.5rem; margin-bottom: 1.5rem; }
+        h1 { color: #a5b4fc; font-size: 1.875rem; margin-bottom: 1rem; }
+        p { white-space: pre-wrap; color: #d1d5db; }
+        audio { width: 100%; margin-top: 2rem; }
     </style>
 </head>
 <body>
     <div class="container">
         <img src="${image}" alt="Inspiration Image">
-        <h1>The Beginning...</h1>
+        <h1>${storyTitle}</h1>
         <p>${story.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>
-        <audio controls src="${audioDataUri}">
-            Your browser does not support the audio element.
-        </audio>
+        <audio controls src="${audioDataUri}">Your browser does not support the audio element.</audio>
     </div>
 </body>
-</html>
-        `;
+</html>`;
 
-        // Step 4: Create a Blob from the HTML string and trigger download
         const htmlBlob = new Blob([pageHtml], { type: 'text/html' });
         const url = URL.createObjectURL(htmlBlob);
         const a = document.createElement('a');
@@ -262,7 +288,6 @@ const StoryGenerator: React.FC = () => {
         a.click();
         URL.revokeObjectURL(url);
         a.remove();
-
     } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to export HTML page.');
     } finally {
@@ -272,19 +297,13 @@ const StoryGenerator: React.FC = () => {
 
   const handleDownloadAudio = async () => {
     if (!story) return;
-
     setIsDownloadingAudio(true);
     setError(null);
-
     try {
       const audioToDownload = generatedAudio || await textToSpeech(story);
-      if (!generatedAudio) {
-        setGeneratedAudio(audioToDownload);
-      }
-      
+      if (!generatedAudio) setGeneratedAudio(audioToDownload);
       const audioBytes = decode(audioToDownload);
       const wavBlob = createWavBlob(audioBytes, { sampleRate: 24000, numChannels: 1, bitsPerSample: 16 });
-      
       const url = URL.createObjectURL(wavBlob);
       const a = document.createElement('a');
       a.style.display = 'none';
@@ -300,6 +319,8 @@ const StoryGenerator: React.FC = () => {
       setIsDownloadingAudio(false);
     }
   };
+
+  const isActionInProgress = isReading || isDownloadingAudio || isExportingHtml || isAdvancing || isSuggestingTitles;
 
   return (
     <div className="flex flex-col gap-6">
@@ -322,19 +343,22 @@ const StoryGenerator: React.FC = () => {
         </div>
         <div className="flex-1 flex flex-col justify-center">
           <h2 className="text-2xl font-semibold mb-4 text-indigo-300">Your Story's Canvas</h2>
-          <p className="text-gray-400 mb-4">Upload an image and let our AI ghostwriter craft a captivating opening paragraph for you. The more evocative the image, the more inspiring the prose.</p>
-          <div className="mb-4">
-            <label htmlFor="story-theme" className="block text-sm font-medium text-gray-300 mb-2">
-                Story Theme (optional)
-            </label>
-            <input
-                id="story-theme"
-                type="text"
-                value={theme}
-                onChange={(e) => setTheme(e.target.value)}
-                placeholder="e.g., a lost artifact, betrayal, cosmic horror"
-                className="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-shadow"
-            />
+          <p className="text-gray-400 mb-4">Upload an image, choose a genre, and let our AI ghostwriter craft a captivating opening for you.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+             <div>
+                <label htmlFor="story-genre" className="block text-sm font-medium text-gray-300 mb-2">Genre</label>
+                <select id="story-genre" value={genre} onChange={(e) => setGenre(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-shadow">
+                    <option>Fantasy</option>
+                    <option>Sci-Fi</option>
+                    <option>Horror</option>
+                    <option>Mystery</option>
+                    <option>Romance</option>
+                </select>
+            </div>
+            <div>
+                <label htmlFor="story-theme" className="block text-sm font-medium text-gray-300 mb-2">Theme (optional)</label>
+                <input id="story-theme" type="text" value={theme} onChange={(e) => setTheme(e.target.value)} placeholder="e.g., a lost artifact" className="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-shadow"/>
+            </div>
           </div>
           <button
             onClick={handleGenerateStory}
@@ -351,30 +375,53 @@ const StoryGenerator: React.FC = () => {
       
       {story && (
         <div className="bg-gray-800 p-6 rounded-lg border border-gray-700 mt-4 animate-fade-in">
-          <h3 className="text-xl font-bold mb-4 text-indigo-300">The Beginning...</h3>
+          <h2 className="text-2xl font-bold mb-4 text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-indigo-500 h-8">
+            {selectedTitle || 'The Beginning...'}
+          </h2>
           <p className="text-gray-300 leading-relaxed whitespace-pre-wrap">{story}</p>
+          
+          {titles && (
+            <div className="mt-6 bg-gray-900/50 p-4 rounded-lg border border-gray-600">
+                <h4 className="text-lg font-semibold mb-3 text-indigo-400">Click a title to apply it:</h4>
+                <ul className="space-y-1">
+                    {titles.map((title, index) => (
+                        <li key={index}>
+                            <button 
+                                onClick={() => setSelectedTitle(title)}
+                                className={`w-full text-left p-2 rounded-md transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-indigo-400 ${
+                                    selectedTitle === title 
+                                    ? 'bg-indigo-600 text-white' 
+                                    : 'text-gray-300 hover:bg-indigo-700/50 hover:text-white'
+                                }`}
+                            >
+                                <span className="font-semibold mr-2">&#8227;</span>{title}
+                            </button>
+                        </li>
+                    ))}
+                </ul>
+            </div>
+          )}
+
           <div className="mt-6 flex flex-wrap gap-4 justify-end">
-            <button
-              onClick={handleReadAloud}
-              disabled={isReading || isDownloadingAudio || isExportingHtml}
-              className="inline-flex items-center gap-2 bg-green-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-green-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed"
-            >
+            <button onClick={handleSuggestTitles} disabled={isActionInProgress} className="inline-flex items-center gap-2 bg-teal-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-teal-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed">
+              {isSuggestingTitles ? <LoadingSpinner /> : <TitleIcon />}
+              {isSuggestingTitles ? 'Suggesting...' : 'Suggest Titles'}
+            </button>
+            {!isConcluded && (
+                 <button onClick={handleAdvanceStory} disabled={isActionInProgress} className="inline-flex items-center gap-2 bg-teal-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-teal-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed">
+                    {isAdvancing ? <LoadingSpinner /> : (continuationCount === 0 ? <ContinueIcon /> : <ConcludeIcon />)}
+                    {isAdvancing ? (continuationCount === 0 ? 'Continuing...' : 'Concluding...') : (continuationCount === 0 ? 'Continue Story' : 'Conclude Story')}
+                </button>
+            )}
+            <button onClick={handleReadAloud} disabled={isActionInProgress} className="inline-flex items-center gap-2 bg-green-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-green-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed">
               {isReading ? <LoadingSpinner /> : <SpeakerIcon />}
               {isReading ? 'Reading...' : 'Read Aloud'}
             </button>
-            <button
-              onClick={handleDownloadAudio}
-              disabled={isDownloadingAudio || isReading || isExportingHtml}
-              className="inline-flex items-center gap-2 bg-sky-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-sky-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed"
-            >
+            <button onClick={handleDownloadAudio} disabled={isActionInProgress} className="inline-flex items-center gap-2 bg-sky-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-sky-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed">
               {isDownloadingAudio ? <LoadingSpinner /> : <DownloadIcon />}
               {isDownloadingAudio ? 'Preparing...' : 'Download Audio'}
             </button>
-            <button
-              onClick={handleExportHtml}
-              disabled={isExportingHtml || isReading || isDownloadingAudio}
-              className="inline-flex items-center gap-2 bg-purple-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-purple-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed"
-            >
+            <button onClick={handleExportHtml} disabled={isActionInProgress} className="inline-flex items-center gap-2 bg-purple-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-purple-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed">
               {isExportingHtml ? <LoadingSpinner /> : <HtmlIcon />}
               {isExportingHtml ? 'Exporting...' : 'Export HTML'}
             </button>

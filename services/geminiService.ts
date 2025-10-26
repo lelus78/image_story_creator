@@ -461,16 +461,20 @@ export const chatWithBot = async (history: ChatMessage[], message: string): Prom
 
 export const refineStory = async (existingStory: string): Promise<string[][]> => {
     try {
-        const prompt = `Sei un editor letterario di eccezionale talento. Il tuo compito è revisionare e armonizzare la seguente storia. Non devi alterare la trama, i personaggi o gli eventi principali. Il tuo obiettivo è migliorare la qualità della prosa.
+        const prompt = `Sei un editor letterario meticoloso, un "lucidatore" di testi. Il tuo compito è rifinire la seguente storia, migliorando la prosa a livello di frase, senza alterarne la sostanza.
 
-Concentrati su:
-- Correggere qualsiasi errore grammaticale o di battitura.
-- Migliorare il flusso e il ritmo delle frasi.
-- Garantire uno stile e un tono coerenti in tutta la narrazione.
-- Sostituire parole o riformulare frasi per un maggiore impatto emotivo ed evocativo.
-- Assicurarti che le transizioni tra i paragrafi siano fluide.
+**REGOLE FONDAMENTALI:**
+1.  **NON ALTERARE LA TRAMA:** Gli eventi, i personaggi, i dialoghi e le sequenze narrative devono rimanere ESATTAMENTE gli stessi.
+2.  **NON RIASSUMERE O TAGLIARE:** La storia non deve essere accorciata. Mantieni una lunghezza e un dettaglio comparabili all'originale per ogni paragrafo. L'obiettivo è migliorare, non condensare.
+3.  **CONCENTRAZIONE SUL DETTAGLIO:** Il tuo lavoro è un micro-editing. Concentrati su:
+    - Correggere errori grammaticali e di battitura.
+    - Migliorare il ritmo e la fluidità delle frasi.
+    - Scegliere parole più precise, evocative o d'impatto.
+    - Garantire uno stile e un tono coerenti.
 
-Restituisci l'intera storia revisionata in formato JSON, con una chiave "refinedStory" che contiene un array di paragrafi. Ogni paragrafo deve essere a sua volta un array di stringhe (frasi o frammenti di frase coerenti).
+Lavora sul testo esistente come uno scultore che leviga una superficie, non come uno che ne cambia la forma.
+
+Restituisci l'intera storia revisionata in formato JSON, con una chiave "refinedStory" che contiene un array di paragrafi. Ogni paragrafo deve essere a sua volta un array di stringhe (frasi o frammenti di frase coerenti). La struttura (numero di paragrafi) deve corrispondere all'originale.
 
 STORIA ORIGINALE:
 ---
@@ -478,7 +482,7 @@ ${existingStory}
 ---`;
         
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-2.5-pro', // Using a more powerful model for a nuanced task like editing.
             contents: prompt,
             config: {
                 responseMimeType: "application/json",

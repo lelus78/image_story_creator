@@ -1,531 +1,376 @@
-import { GoogleGenAI, Modality, Type } from "@google/genai";
-import { ChatMessage } from '../types';
+// @google/genai-sdk-remediation: V1.5.0
+import { GoogleGenAI, Modality, Type, Content } from "@google/genai";
+import { ChatMessage, StoryParagraph } from '../types';
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
-
-interface StoryChunk {
-    speaker: "NARRATOR" | "MALE" | "FEMALE_1" | "FEMALE_2";
-    text: string;
-}
-
-const baseGenerationConfig = {
-    responseMimeType: "application/json",
-    responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-            paragraph: {
-                type: Type.ARRAY,
-                items: {
-                    type: Type.STRING,
-                    description: "Una singola frase o un frammento coerente del paragrafo."
-                },
-            },
-        },
-        required: ["paragraph"],
-    },
-};
-
-const genreInstructions: Record<string, { opening: string, continuation: string, conclusion: string }> = {
-    "Fantasy": {
-        opening: "Crea un'atmosfera di meraviglia e mistero antico. Concentrati su un elemento magico, una profezia, una creatura mitica o un manufatto leggendario. Il mondo deve sembrare vasto e ricco di storia.",
-        continuation: "Approfondisci la lore del mondo. Fai in modo che il protagonista scopra un nuovo aspetto della magia, affronti una sfida legata a una creatura mitica o sveli un segreto del passato. L'azione dovrebbe essere epica.",
-        conclusion: "Offri una conclusione epica e memorabile. La magia trionfa, una profezia si compie, o il mondo viene cambiato per sempre dalle azioni del protagonista. La risoluzione deve essere degna di una leggenda."
-    },
-    "Sci-Fi": {
-        opening: "Immergi il lettore in un mondo futuristico o tecnologicamente avanzato. Introduci un concetto scientifico intrigante, un'anomalia tecnologica, un dilemma etico legato alla scienza o il primo contatto con l'ignoto.",
-        continuation: "Esplora le implicazioni della tecnologia o del concetto introdotto. La tensione dovrebbe derivare dalla lotta per la sopravvivenza in un ambiente ostile, da un mistero tecnologico o da un conflitto ideologico.",
-        conclusion: "Fornisci una risoluzione che sia intellettualmente soddisfacente. Il mistero tecnologico viene risolto, l'umanità fa un passo avanti (o indietro) o il protagonista prende una decisione che definisce il futuro."
-    },
-    "Horror": {
-        opening: "Costruisci un'atmosfera di terrore e oppressione. Concentrati sull'ignoto, sull'inquietudine psicologica e sulla sensazione di essere osservati. L'evento scatenante deve essere sottile ma profondamente disturbante.",
-        continuation: "Intensifica il terrore. La minaccia deve diventare più tangibile e personale. Gioca con la percezione del protagonista, facendolo dubitare della propria sanità mentale. L'isolamento è un elemento chiave.",
-        conclusion: "Concludi con un climax terrificante. Il protagonista potrebbe sopravvivere ma rimanere segnato per sempre, soccombere all'orrore, o scoprire una verità ancora più spaventosa. Il finale non deve necessariamente essere positivo."
-    },
-    "Mystery": {
-        opening: "Presenta un enigma avvincente: un crimine inspiegabile, una scomparsa misteriosa o un evento apparentemente impossibile. Introduci il detective o il personaggio centrale e fornisci il primo, cruciale indizio.",
-        continuation: "Sviluppa l'indagine. Introduci nuovi sospetti, false piste e colpi di scena. Ogni paragrafo deve aggiungere un pezzo al puzzle, aumentando la complessità e la posta in gioco per chi indaga.",
-        conclusion: "Svela la verità con un colpo di scena brillante e logico. Tutti gli indizi devono convergere. La rivelazione finale deve essere sorprendente ma coerente con la narrazione precedente, fornendo una chiusura completa all'enigma."
-    },
-    "Romance": {
-        opening: "Descrivi un incontro significativo o un momento cruciale che accende la scintilla tra due personaggi. Concentrati sui loro sentimenti interiori, sulle prime impressioni e sulla tensione emotiva che si crea tra loro.",
-        continuation: "Sviluppa la relazione. Esplora gli ostacoli (interni o esterni) che i personaggi devono superare. La narrazione deve essere guidata dal dialogo, dai gesti e dall'evoluzione dei loro sentimenti.",
-        conclusion: "Porta la storia d'amore a una risoluzione emotivamente appagante. I personaggi superano gli ostacoli finali e dichiarano i loro sentimenti, culminando in un momento di unione e felicità che lasci il lettore soddisfatto."
-    },
-    "Adventure": {
-        opening: "Lancia il protagonista in un viaggio verso l'ignoto. Inizia con la scoperta di una mappa, un artefatto misterioso o una chiamata all'azione irresistibile. L'ambientazione deve promettere pericolo ed eccitazione.",
-        continuation: "Sviluppa il viaggio con ostacoli e scoperte. Il protagonista deve superare trappole, risolvere enigmi antichi o affrontare rivali in luoghi esotici e pericolosi. Il ritmo deve essere incalzante.",
-        conclusion: "Raggiungi la destinazione finale con una rivelazione o il conseguimento dell'obiettivo. Il tesoro viene trovato, il mistero risolto. La conclusione deve essere un culmine trionfante dell'avventura intrapresa."
-    },
-    "Thriller": {
-        opening: "Inizia con un evento ad alta tensione che mette immediatamente il protagonista in pericolo o di fronte a una minaccia imminente. Stabilisci subito la posta in gioco e un senso di urgenza, un 'ticking clock'.",
-        continuation: "Aumenta la pressione e la suspense. Il protagonista è braccato, il tempo stringe. Introduci colpi di scena, tradimenti e false piste che complicano la situazione e lo spingono al limite.",
-        conclusion: "Concludi con uno scontro finale esplosivo e una risoluzione al cardiopalma. La minaccia viene neutralizzata, ma forse a un costo elevato. Il finale deve essere rapido, intenso e risolutivo."
-    },
-    "Humor": {
-        opening: "Presenta una situazione di partenza normale che viene stravolta da un evento assurdo o un malinteso comico. Introduci un protagonista con una personalità eccentrica o un difetto divertente.",
-        continuation: "Escala la comicità attraverso una serie di eventi a catena sempre più surreali. Usa dialoghi brillanti, situazioni imbarazzanti e l'ironia della sorte per far avanzare la trama.",
-        conclusion: "Risolvi il caos in un modo inaspettato e divertente, che spesso riporta la situazione a una 'nuova normalità' ancora più strana di quella iniziale. Termina con una battuta finale o un'immagine comica."
-    }
-};
-
-export const generateStoryFromImage = async (imageData: string, mimeType: string, genre: string, theme?: string, hint?: string): Promise<string[]> => {
-  try {
-    const imagePart = {
-      inlineData: {
-        data: imageData,
-        mimeType: mimeType,
-      },
-    };
-
-    const instructions = genreInstructions[genre] || genreInstructions.Fantasy;
-
-    let promptText = `Sei un maestro della narrativa. Usa questa immagine come ispirazione per scrivere un'apertura di storia breve e potente in italiano (massimo due paragrafi) nel genere **${genre}**.
-${instructions.opening}
-Non limitarti a descrivere la scena; crea un evento o un'azione che dia il via alla trama. La prosa deve essere impeccabile. Suddividi il paragrafo in un array di frasi o frammenti di frase coerenti.`
-    
-    if (theme && theme.trim() !== '') {
-        promptText += `\n\nIncorpora questo tema: "${theme}".`;
-    }
-
-    if (hint && hint.trim() !== '') {
-        promptText += `\n\nConsidera questo suggerimento: "${hint}".`;
-    }
-
-    const textPart = {
-      text: promptText
-    };
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: { parts: [imagePart, textPart] },
-      config: baseGenerationConfig,
-    });
-    
-    const jsonResponse = JSON.parse(response.text);
-    return jsonResponse.paragraph || [];
-  } catch (error) {
-    console.error("Error generating story from image:", error);
-    throw new Error("Failed to generate story. Please try again.");
+// Helper to initialize the API
+const getGenAI = () => {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    // In a real app, you might want to show a more user-friendly error
+    throw new Error("API_KEY environment variable is not set.");
   }
+  return new GoogleGenAI({ apiKey });
 };
 
-export const continueStory = async (existingStory: string, genre: string, hint?: string): Promise<string[]> => {
-  try {
-    const instructions = genreInstructions[genre] || genreInstructions.Fantasy;
-    let prompt = `Sei un maestro della narrativa. Continua la seguente storia **${genre}**, che ha già avuto il suo evento scatenante.
-${instructions.continuation}
-**Non ripetere l'impostazione iniziale.** Concentrati sulle conseguenze dirette dell'evento accaduto e fai avanzare la trama in modo significativo.
-Sviluppa la direzione scelta in un paragrafo avvincente. Suddividi il paragrafo in un array di frasi o frammenti di frase coerenti.`;
-
-    if (hint && hint.trim() !== '') {
-        prompt += `\n\nConsidera questo suggerimento: "${hint}".`;
-    }
-
-    prompt += `\n\nSTORIA FINORA:\n${existingStory}`;
+/**
+ * Splits a long text into smaller, manageable chunks based on sentence endings.
+ * This helps in rendering the story progressively and applying chunk-level features.
+ * @param text The full text of a paragraph.
+ * @returns An array of strings, where each string is a chunk of the original text.
+ */
+const chunkText = (text: string): string[] => {
+    if (!text) return [];
+    // Split by sentences to find natural breaking points.
+    const sentences = text.match(/[^.!?]+[.!?]*/g) || [text];
+    const chunks: string[] = [];
+    let currentChunk = '';
     
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: prompt,
-      config: baseGenerationConfig,
-    });
-    
-    const jsonResponse = JSON.parse(response.text);
-    return jsonResponse.paragraph || [];
-  } catch (error) {
-    console.error("Error continuing story:", error);
-    throw new Error("Failed to continue the story. Please try again.");
-  }
-};
-
-export const concludeStory = async (existingStory: string, genre: string, hint?: string): Promise<string[]> => {
-  try {
-    const instructions = genreInstructions[genre] || genreInstructions.Fantasy;
-    let prompt = `Sei un maestro della narrativa. Concludi la seguente storia **${genre}**, che è arrivata al suo punto di massima tensione. Scrivi il **paragrafo finale**.
-${instructions.conclusion}
-**Non introdurre nuovi misteri.** Fornisci una risoluzione soddisfacente e d'impatto che leghi tutti i fili della narrazione.
-Scrivi un paragrafo finale che dia un senso di chiusura. Suddividi il paragrafo in un array di frasi o frammenti di frase coerenti.`;
-
-    if (hint && hint.trim() !== '') {
-        prompt += `\n\nConsidera questo suggerimento: "${hint}".`;
-    }
-
-    prompt += `\n\nSTORIA FINORA:\n${existingStory}`;
-    
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: prompt,
-      config: baseGenerationConfig,
-    });
-    
-    const jsonResponse = JSON.parse(response.text);
-    return jsonResponse.paragraph || [];
-  } catch (error) {
-    console.error("Error concluding story:", error);
-    throw new Error("Failed to conclude the story. Please try again.");
-  }
-};
-
-export const regenerateChunk = async (paragraphContext: string, chunkToRegenerate: string, hint?: string): Promise<string> => {
-    try {
-        let prompt = `Sei un editor letterario. Il tuo compito è riscrivere una singola frase all'interno di un paragrafo per migliorarla, mantenendo la coerenza con il resto del testo.
-
-Questo è il paragrafo completo:
-"${paragraphContext}"
-
-Questa è la frase specifica da riscrivere:
-"${chunkToRegenerate}"
-`;
-
-        if (hint && hint.trim() !== '') {
-            prompt += `\nPer la riscrittura, segui questo suggerimento: "${hint}"`;
-        } else {
-            prompt += `\nRiscrivi la frase per renderla più vivida, d'impatto o evocativa.`;
+    for (const sentence of sentences) {
+        // If adding the next sentence makes the chunk too long, push the current one.
+        if ((currentChunk + sentence).length > 250 && currentChunk.length > 0) {
+            chunks.push(currentChunk.trim());
+            currentChunk = '';
         }
-
-        prompt += `\n\n**Restituisci solo e soltanto la singola frase riscritta**, come testo semplice, senza virgolette, spiegazioni o qualsiasi altro testo aggiuntivo.`;
-        
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: prompt,
-        });
-        
-        return response.text.trim();
-    } catch (error) {
-        console.error("Error regenerating chunk:", error);
-        throw new Error("Failed to regenerate the text. Please try again.");
+        currentChunk += sentence;
     }
+
+    // Add the last remaining chunk.
+    if (currentChunk.length > 0) {
+        chunks.push(currentChunk.trim());
+    }
+    
+    // If no chunks were created (e.g., very short text), return the original text as one chunk.
+    return chunks.length > 0 ? chunks : [text];
 };
 
-export const regenerateParagraph = async (
-    storyContext: { before: string; after: string },
-    paragraphToRegenerate: string,
-    hint?: string
+
+export const generateStoryFromImage = async (
+  base64Data: string,
+  mimeType: string,
+  genre: string,
+  theme: string,
+  characters: string,
+  location: string
 ): Promise<string[]> => {
-    try {
-        let prompt = `Sei un editor letterario. Il tuo compito è riscrivere un intero paragrafo di una storia per migliorarlo, mantenendo la coerenza con il testo precedente e successivo.
+  const ai = getGenAI();
 
-Questo è il testo che viene PRIMA del paragrafo da riscrivere:
----
-${storyContext.before || "(Nessun testo precedente)"}
----
+  const imagePart = {
+    inlineData: {
+      data: base64Data,
+      mimeType: mimeType,
+    },
+  };
 
-Questo è il testo che viene DOPO:
----
-${storyContext.after || "(Nessun testo successivo)"}
----
+  let prompt = `Scrivi l'inizio di una storia basandoti su questa immagine, in lingua italiana.
+Genere: ${genre}.`;
+  if (theme) prompt += `\nTema: ${theme}.`;
+  if (characters) prompt += `\nPersonaggi: ${characters}.`;
+  if (location) prompt += `\nLuogo: ${location}.`;
+  prompt += `\nScrivi un paragrafo iniziale avvincente di circa 150 parole. La risposta deve essere esclusivamente in italiano.`;
 
-Questo è il paragrafo specifico da riscrivere:
-"${paragraphToRegenerate}"
-`;
+  const textPart = { text: prompt };
 
-        if (hint && hint.trim() !== '') {
-            prompt += `\nPer la riscrittura, segui questo suggerimento: "${hint}"`;
-        } else {
-            prompt += `\nRiscrivi il paragrafo per renderlo più vivido, d'impatto o evocativo, assicurandoti che si colleghi fluidamente con il resto della narrazione.`;
-        }
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.5-flash',
+    contents: { parts: [imagePart, textPart] },
+  });
 
-        prompt += `\n\n**Restituisci solo e soltanto il paragrafo riscritto**, formattato come un oggetto JSON con una singola chiave "paragraph" che contiene un array di stringhe (frasi o frammenti).`;
-
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: prompt,
-            config: baseGenerationConfig,
-        });
-
-        const jsonResponse = JSON.parse(response.text);
-        return jsonResponse.paragraph || [];
-    } catch (error) {
-        console.error("Error regenerating paragraph:", error);
-        throw new Error("Failed to regenerate the paragraph. Please try again.");
-    }
-};
-
-
-export const suggestTitles = async (story: string): Promise<string[]> => {
-    try {
-        const prompt = `Dato il seguente testo di una storia, suggerisci 5 titoli accattivanti in italiano. I titoli devono essere creativi e riflettere il tono e il contenuto della storia.\n\nTESTO:\n${story}`;
-
-        const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: prompt,
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.OBJECT,
-                    properties: {
-                        titles: {
-                            type: Type.ARRAY,
-                            items: {
-                                type: Type.STRING,
-                            },
-                        },
-                    },
-                    required: ["titles"],
-                },
-            },
-        });
-        
-        const jsonResponse = JSON.parse(response.text);
-        return jsonResponse.titles || [];
-
-    } catch (error) {
-        console.error("Error suggesting titles:", error);
-        throw new Error("Failed to suggest titles. Please try again.");
-    }
-};
-
-export const tagStoryForNarration = async (story: string): Promise<StoryChunk[]> => {
-    try {
-        const prompt = `Analizza il seguente testo di una storia. Suddividilo in un array di oggetti JSON. Ogni oggetto deve avere due chiavi: "speaker" e "text".
-- Usa "NARRATOR" per le parti narrative.
-- Usa "MALE" per i dialoghi pronunciati da un personaggio maschile.
-- Usa "FEMALE_1" per il primo personaggio femminile che parla e "FEMALE_2" per il secondo, se presente. Se c'è un solo personaggio femminile, usa "FEMALE_1".
-Sii molto preciso nell'attribuire i dialoghi basandoti su indicatori come "disse lui", "rispose lei", nomi o contesto. Raggruppa frasi consecutive dello stesso speaker in un unico oggetto.
-
-TESTO:
----
-${story}
----`;
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: prompt,
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.OBJECT,
-                    properties: {
-                        script: {
-                            type: Type.ARRAY,
-                            items: {
-                                type: Type.OBJECT,
-                                properties: {
-                                    speaker: { type: Type.STRING, description: "Can be NARRATOR, MALE, FEMALE_1, or FEMALE_2" },
-                                    text: { type: Type.STRING }
-                                }
-                            }
-                        }
-                    },
-                    required: ["script"],
-                },
-            },
-        });
-        const jsonResponse = JSON.parse(response.text);
-        if (Array.isArray(jsonResponse.script) && jsonResponse.script.every((s: any) => 'speaker' in s && 'text' in s)) {
-             // Remap any old "FEMALE" tags to "FEMALE_1" for backward compatibility.
-             return jsonResponse.script.map((chunk: any) => 
-                chunk.speaker === 'FEMALE' ? { ...chunk, speaker: 'FEMALE_1' } : chunk
-             );
-        }
-        console.warn("Script tagging returned unexpected format, falling back to single voice.");
-        return [{ speaker: 'NARRATOR', text: story }];
-
-    } catch (error) {
-        console.warn("Could not tag story for narration, falling back to single voice.", error);
-        return [{ speaker: 'NARRATOR', text: story }];
-    }
+  return chunkText(response.text);
 };
 
 
 export const textToSpeech = async (text: string): Promise<string> => {
-    try {
-        const taggedScript = await tagStoryForNarration(text);
-        // FIX: Explicitly type `initialSpeakers` to prevent type widening to `string[]`, which causes a type error later.
-        const initialSpeakers: StoryChunk['speaker'][] = Array.from(new Set(taggedScript.map(chunk => chunk.speaker)));
-        
-        let scriptForTts = taggedScript;
-        let finalSpeakers: string[];
+  const ai = getGenAI();
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.5-flash-preview-tts',
+    contents: [{ parts: [{ text: `Leggi la seguente storia in italiano: ${text}` }] }],
+    config: {
+      responseModalities: [Modality.AUDIO],
+      speechConfig: {
+        voiceConfig: {
+          prebuiltVoiceConfig: { voiceName: 'Kore' },
+        },
+      },
+    },
+  });
 
-        // --- Smart Speaker Merging Logic ---
-        // If we have 3 or more speakers, we must merge down to 2.
-        if (initialSpeakers.length >= 3) {
-            const hasNarrator = initialSpeakers.includes('NARRATOR');
-            const hasMale = initialSpeakers.includes('MALE');
-            const hasFemale1 = initialSpeakers.includes('FEMALE_1');
-            const hasFemale2 = initialSpeakers.includes('FEMALE_2');
-
-            // Priority: Keep Narrator and one other distinct voice.
-            if (hasNarrator && hasMale) { // N, M, F1 -> Merge F1 into N
-                scriptForTts = taggedScript.map(chunk => (chunk.speaker === 'FEMALE_1' || chunk.speaker === 'FEMALE_2') ? { ...chunk, speaker: 'NARRATOR' } : chunk);
-            } else if (hasNarrator && hasFemale1 && hasFemale2) { // N, F1, F2 -> Merge F2 into N
-                scriptForTts = taggedScript.map(chunk => chunk.speaker === 'FEMALE_2' ? { ...chunk, speaker: 'NARRATOR' } : chunk);
-            } else {
-                 // Fallback for other complex cases (e.g., M, F1, F2): merge the last detected speaker into the first.
-                 const [firstSpeaker, secondSpeaker, ...othersToMerge] = initialSpeakers;
-                 const mergeSet = new Set(othersToMerge);
-                 // FIX: Removed unnecessary type casts. The explicit typing of `initialSpeakers` ensures `firstSpeaker` has the correct type.
-                 scriptForTts = taggedScript.map(chunk => mergeSet.has(chunk.speaker) ? { ...chunk, speaker: firstSpeaker } : chunk);
-            }
-        }
-        
-        finalSpeakers = Array.from(new Set(scriptForTts.map(chunk => chunk.speaker)));
-
-        let response;
-
-        // --- Multi-Speaker Generation ---
-        if (finalSpeakers.length === 2) {
-            const voiceMap = new Map<string, string>();
-            
-            // Assign voices based on a priority system to ensure consistency
-            if (finalSpeakers.includes('NARRATOR')) {
-                voiceMap.set('NARRATOR', 'Kore');
-                const otherSpeaker = finalSpeakers.find(s => s !== 'NARRATOR')!;
-                voiceMap.set(otherSpeaker, otherSpeaker === 'MALE' ? 'Puck' : 'Zephyr');
-            } else if (finalSpeakers.includes('FEMALE_1') && finalSpeakers.includes('FEMALE_2')) {
-                 voiceMap.set('FEMALE_1', 'Kore');
-                 voiceMap.set('FEMALE_2', 'Zephyr');
-            } else {
-                // Generic fallback for any other 2-speaker combo
-                const [first, second] = finalSpeakers;
-                voiceMap.set(first, 'Kore');
-                voiceMap.set(second, second === 'MALE' ? 'Puck' : 'Zephyr');
-            }
-
-            const speakerVoiceConfigs = finalSpeakers.map(speaker => ({
-                speaker,
-                voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceMap.get(speaker)! } }
-            }));
-            
-            const promptText = scriptForTts.map(chunk => `${chunk.speaker}: ${chunk.text}`).join('\n');
-            
-            response = await ai.models.generateContent({
-                model: "gemini-2.5-flash-preview-tts",
-                contents: [{ parts: [{ text: promptText }] }],
-                config: {
-                    responseModalities: [Modality.AUDIO],
-                    speechConfig: {
-                        multiSpeakerVoiceConfig: { speakerVoiceConfigs }
-                    }
-                }
-            });
-        } 
-        // --- Single-Speaker Generation ---
-        else {
-            const toneInstruction = await analyzeStoryTone(text);
-            const promptText = toneInstruction
-                ? `Leggi il seguente testo ${toneInstruction}: ${text}`
-                : text;
-
-            response = await ai.models.generateContent({
-                model: "gemini-2.5-flash-preview-tts",
-                contents: [{ parts: [{ text: promptText }] }],
-                config: {
-                    responseModalities: [Modality.AUDIO],
-                    speechConfig: {
-                        voiceConfig: {
-                            prebuiltVoiceConfig: { voiceName: 'Kore' },
-                        },
-                    },
-                },
-            });
-        }
-        
-        const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-        if (!base64Audio) {
-            throw new Error("No audio data received from API.");
-        }
-        return base64Audio;
-    } catch (error) {
-        console.error("Error with text-to-speech:", error);
-        throw new Error("Failed to generate audio. Please try again.");
-    }
-};
-
-// This function remains for the single-voice fallback logic.
-export const analyzeStoryTone = async (story: string): Promise<string> => {
-    try {
-        const prompt = `Analizza il tono, l'atmosfera e il contenuto emotivo del seguente testo di una storia. In base alla tua analisi, restituisci una breve istruzione vocale per un narratore AI su come leggere il testo. Esempi: 'con un tono cupo e pieno di suspense', 'con voce meravigliata e sognante', 'in modo rapido e ansioso', 'con un senso di tranquilla malinconia'.
-
-Restituisci SOLO l'istruzione, come testo semplice, senza virgolette o altre spiegazioni.
-
-TESTO DELLA STORIA:
----
-${story}
----`;
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: prompt,
-        });
-        return response.text.trim();
-    } catch (error) {
-        console.warn("Could not analyze story tone:", error);
-        return ""; // Return empty string on failure to not break the audio generation
-    }
+  const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+  if (!base64Audio) {
+      throw new Error('Audio generation failed. The response did not contain audio data.');
+  }
+  return base64Audio;
 };
 
 
-export const chatWithBot = async (history: ChatMessage[], message: string): Promise<string> => {
+export const continueStory = async (
+  currentStory: string,
+  genre: string
+): Promise<string[]> => {
+  const ai = getGenAI();
+  const prompt = `Questa è una storia di genere ${genre} finora:\n\n${currentStory}\n\nContinua la storia con il prossimo paragrafo, scrivendo in italiano. Non ripetere nessuna parte della storia già fornita. Concentrati sullo sviluppo della trama in una direzione nuova e interessante. Scrivi circa 150 parole.`;
+
+  const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+  });
+  
+  return chunkText(response.text);
+};
+
+
+export const concludeStory = async (
+  currentStory: string,
+  genre: string
+): Promise<string[]> => {
+    const ai = getGenAI();
+    const prompt = `Questa è una storia di genere ${genre} finora:\n\n${currentStory}\n\nScrivi un paragrafo finale appropriato e conclusivo per la storia, in italiano. Porta la narrazione a una fine soddisfacente. Non ripetere nessuna parte della storia già fornita. Scrivi circa 150 parole.`;
+
+    const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+    });
+    
+    return chunkText(response.text);
+};
+
+export const suggestTitles = async (storyText: string): Promise<string[]> => {
+    const ai = getGenAI();
+    const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: `Basandoti sulla seguente storia, suggerisci 5 titoli creativi e appropriati in lingua italiana. Restituisci SOLO un array JSON di stringhe.\n\nStoria:\n${storyText}`,
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
+            },
+        },
+    });
+
     try {
-        // We will build a simple prompt from the last few messages.
-        // For a more robust solution, a proper chat history would be passed.
-        const prompt = `
-            You are a helpful AI assistant.
-            The user is asking: ${message}
-        `;
-
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: prompt,
-        });
-
-        return response.text;
-    } catch (error) {
-        console.error("Error chatting with bot:", error);
-        throw new Error("I'm having trouble responding right now. Please try again later.");
+        const jsonStr = response.text.trim();
+        const titles = JSON.parse(jsonStr);
+        if (Array.isArray(titles) && titles.every(t => typeof t === 'string')) {
+            return titles;
+        }
+        throw new Error('Invalid format for titles received from AI.');
+    } catch (e) {
+        console.error("Failed to parse titles JSON:", response.text, e);
+        throw new Error("Could not get title suggestions from the AI. The format was incorrect.");
     }
 };
 
-export const refineStory = async (existingStory: string): Promise<string[][]> => {
-    try {
-        const prompt = `Sei un editor letterario meticoloso, un "lucidatore" di testi. Il tuo compito è rifinire la seguente storia, migliorando la prosa a livello di frase, senza alterarne la sostanza.
+export const regenerateChunk = async (
+    paragraphContext: string,
+    chunkToRegenerate: string,
+    hint?: string
+): Promise<string> => {
+    const ai = getGenAI();
+    let prompt = `All'interno di questo paragrafo:\n"${paragraphContext}"\n\nRiscrivi la seguente parte in italiano: "${chunkToRegenerate}"`;
+    if (hint) {
+        prompt += `\nTieni a mente questo suggerimento: "${hint}"`;
+    }
+    prompt += `\n\nRestituisci SOLO la parte riscritta, in italiano, senza testo aggiuntivo, spiegazioni o virgolette.`;
 
-**REGOLE FONDAMENTALI:**
-1.  **NON ALTERARE LA TRAMA:** Gli eventi, i personaggi, i dialoghi e le sequenze narrative devono rimanere ESATTAMENTE gli stessi.
-2.  **NON RIASSUMERE O TAGLIARE:** La storia non deve essere accorciata. Mantieni una lunghezza e un dettaglio comparabili all'originale per ogni paragrafo. L'obiettivo è migliorare, non condensare.
-3.  **CONCENTRAZIONE SUL DETTAGLIO:** Il tuo lavoro è un micro-editing. Concentrati su:
-    - Correggere errori grammaticali e di battitura.
-    - Migliorare il ritmo e la fluidità delle frasi.
-    - Scegliere parole più precise, evocative o d'impatto.
-    - Garantire uno stile e un tono coerenti.
+    const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+        config: {
+            temperature: 0.8 // A bit more creative for regeneration
+        }
+    });
+    
+    // Clean up response in case it includes quotes or other artifacts
+    return response.text.trim().replace(/^"|"$/g, '');
+};
 
-Lavora sul testo esistente come uno scultore che leviga una superficie, non come uno che ne cambia la forma.
+interface StoryContext {
+    before: string;
+    after: string;
+}
 
-Restituisci l'intera storia revisionata in formato JSON, con una chiave "refinedStory" che contiene un array di paragrafi. Ogni paragrafo deve essere a sua volta un array di stringhe (frasi o frammenti di frase coerenti). La struttura (numero di paragrafi) deve corrispondere all'originale.
+export const regenerateParagraph = async (
+    storyContext: StoryContext,
+    paragraphToRegenerate: string,
+    hint?: string
+): Promise<string[]> => {
+    const ai = getGenAI();
+    let prompt = `Ecco una storia. Voglio riscrivere uno dei paragrafi in italiano.\n\n`;
+    if (storyContext.before) {
+        prompt += `Parte della storia prima del paragrafo da riscrivere:\n${storyContext.before}\n\n`;
+    }
+    prompt += `Il paragrafo da riscrivere è:\n"${paragraphToRegenerate}"\n\n`;
+    if (storyContext.after) {
+        prompt += `Parte della storia dopo il paragrafo da riscrivere:\n${storyContext.after}\n\n`;
+    }
+    prompt += 'Per favore, riscrivi il paragrafo in italiano, assicurandoti che sia coerente con il resto della storia.';
+    if (hint) {
+        prompt += ` Tieni a mente questo specifico suggerimento: "${hint}"`;
+    }
+    prompt += `\n\nRestituisci SOLO il testo completo del nuovo paragrafo. Non includere frasi introduttive come "Ecco il paragrafo riscritto:".`;
+    
+    const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+    });
+    
+    return chunkText(response.text);
+};
 
-STORIA ORIGINALE:
----
-${existingStory}
----`;
-        
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-pro', // Using a more powerful model for a nuanced task like editing.
-            contents: prompt,
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: {
+
+export const refineStory = async (currentStoryParts: StoryParagraph[]): Promise<StoryParagraph[]> => {
+    const ai = getGenAI();
+    const currentStory = currentStoryParts.map(p => p.chunks.join(' ')).join('\n\n');
+    const prompt = `Affina la seguente storia, che è in italiano. Il tuo compito è migliorare la prosa, il ritmo e le descrizioni, mantenendo intatti la trama principale, i personaggi e il tono. La risposta deve essere in italiano. La storia è attualmente divisa in paragrafi da doppi a capo. Restituisci la storia affinata come un array JSON in cui ogni elemento è un oggetto con una chiave "paragraph" contenente il testo del paragrafo.\n\nStoria:\n${currentStory}`;
+
+    const response = await ai.models.generateContent({
+        model: "gemini-2.5-pro", // Use a more powerful model for this complex task
+        contents: prompt,
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.ARRAY,
+                items: {
                     type: Type.OBJECT,
                     properties: {
-                        refinedStory: {
-                            type: Type.ARRAY,
-                            items: {
-                                type: Type.ARRAY,
-                                description: "Un singolo paragrafo, suddiviso in frasi.",
-                                items: {
-                                    type: Type.STRING,
-                                    description: "Una singola frase o un frammento coerente del paragrafo."
-                                }
-                            },
-                        },
+                        paragraph: {
+                            type: Type.STRING,
+                            description: 'The text of a single refined paragraph of the story.'
+                        }
                     },
-                    required: ["refinedStory"],
-                },
+                    required: ['paragraph'],
+                }
             },
-        });
-        
-        const jsonResponse = JSON.parse(response.text);
-        return jsonResponse.refinedStory || [];
+        },
+    });
 
-    } catch (error) {
-        console.error("Error refining story:", error);
-        throw new Error("Failed to refine the story. Please try again.");
+    try {
+        const jsonStr = response.text.trim();
+        const refinedData: { paragraph: string }[] = JSON.parse(jsonStr);
+        if (!Array.isArray(refinedData) || !refinedData.every(item => item && typeof item.paragraph === 'string')) {
+            throw new Error('Invalid format for refined story received from AI.');
+        }
+
+        const preserveImages = refinedData.length === currentStoryParts.length;
+
+        return refinedData.map((item, index) => ({
+            chunks: chunkText(item.paragraph),
+            image: preserveImages ? currentStoryParts[index].image : null
+        }));
+    } catch (e) {
+        console.error("Failed to parse refined story JSON:", response.text, e);
+        throw new Error("Could not refine the story due to an issue with the AI's response format.");
     }
+};
+
+export const generateImageForParagraph = async (
+  paragraphText: string,
+  initialImageBase64: string,
+  initialImageMimeType: string
+): Promise<string> => {
+    const ai = getGenAI();
+    
+    const imagePart = {
+        inlineData: {
+            data: initialImageBase64,
+            mimeType: initialImageMimeType,
+        },
+    };
+    
+    const textPart = {
+        text: `Sei un illustratore. Il tuo compito è creare un'immagine basata su una descrizione testuale. Devi abbinare lo stile artistico di un'immagine di riferimento che ti viene fornita. Non modificare l'immagine di riferimento. Crea una nuova illustrazione da zero.\n\nDescrizione della scena: "${paragraphText}"`,
+    };
+
+    const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash-image',
+        contents: {
+            parts: [imagePart, textPart],
+        },
+        config: {
+            responseModalities: [Modality.IMAGE],
+        },
+    });
+
+    const part = response.candidates?.[0]?.content?.parts?.[0];
+    if (part?.inlineData?.data) {
+        const base64ImageBytes: string = part.inlineData.data;
+        return `data:${part.inlineData.mimeType};base64,${base64ImageBytes}`;
+    }
+    
+    // If we reach here, image generation failed. Provide a more detailed error.
+    let errorMessage = "Generazione immagine fallita. La risposta non conteneva dati immagine.";
+    
+    if (response.text) {
+         errorMessage = `L'API ha restituito un messaggio di testo invece di un'immagine: "${response.text}"`;
+    } else if (response.candidates?.[0]?.finishReason && response.candidates[0].finishReason !== 'STOP') {
+        const finishReason = response.candidates[0].finishReason;
+        errorMessage += ` Motivo del fallimento: ${finishReason}.`;
+
+        if (finishReason === 'NO_IMAGE') {
+            errorMessage += ` L'IA non è riuscita a creare un'immagine basata su questo paragrafo. Prova a rigenerare il testo del paragrafo o a renderlo più descrittivo.`
+        }
+
+        const safetyRatings = response.candidates[0].safetyRatings;
+        if (safetyRatings && safetyRatings.some(r => r.probability !== 'NEGLIGIBLE' && r.probability !== 'LOW')) {
+             errorMessage += ` Questo è probabilmente dovuto ai filtri di sicurezza.`;
+        }
+    }
+
+    console.error("Image generation failed. Full API response:", JSON.stringify(response, null, 2));
+    throw new Error(errorMessage);
+};
+
+
+export const suggestPlotTwists = async (storyText: string): Promise<string[]> => {
+    const ai = getGenAI();
+    const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: `Basandoti sulla seguente storia, suggerisci 3 colpi di scena sorprendenti e interessanti in lingua italiana che potrebbero essere introdotti. Restituisci SOLO un array JSON di stringhe, dove ogni stringa è un suggerimento di colpo di scena.\n\nStoria:\n${storyText}`,
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
+            },
+        },
+    });
+
+    try {
+        const jsonStr = response.text.trim();
+        const twists = JSON.parse(jsonStr);
+        if (Array.isArray(twists) && twists.every(t => typeof t === 'string')) {
+            return twists;
+        }
+        throw new Error('Invalid format for plot twists received from AI.');
+    } catch (e) {
+        console.error("Failed to parse plot twists JSON:", response.text, e);
+        throw new Error("Could not get plot twist suggestions from the AI. The format was incorrect.");
+    }
+};
+
+export const chatWithBot = async (
+    messageHistory: ChatMessage[],
+    newUserMessage: string,
+    storyContext: string
+): Promise<string> => {
+    const ai = getGenAI();
+
+    // Map our app's ChatMessage to Gemini's Content format
+    const history: Content[] = messageHistory.map(msg => ({
+        role: msg.role,
+        parts: [{ text: msg.text }]
+    }));
+    
+    const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [
+          ...history,
+          { role: 'user', parts: [{text: newUserMessage }] }
+        ],
+        config: {
+            systemInstruction: `Sei un AI Writing Coach. L'utente sta scrivendo una storia in italiano. Ecco la versione attuale della sua storia:\n\n---\n${storyContext || "(L'utente non ha ancora scritto nulla.)"}\n---\n\nIl tuo ruolo è fornire feedback costruttivo, rispondere a domande e aiutarlo a migliorare la sua storia. Sii incoraggiante, specifico e d'aiuto. Mantieni le tue risposte concise e dirette. Rispondi sempre e solo in italiano.`,
+        }
+    });
+
+    return response.text;
 };

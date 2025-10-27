@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { generateStoryFromImage, textToSpeech, continueStory, suggestTitles, concludeStory, regenerateChunk, regenerateParagraph, refineStory } from '../services/geminiService';
-import { UploadIcon, SparklesIcon, SpeakerIcon, LoadingSpinner, DownloadIcon, HtmlIcon, ContinueIcon, TitleIcon, ConcludeIcon, RegenerateIcon, HintIcon, PlayIcon, PauseIcon, StopIcon, CancelIcon, RefineIcon } from './icons/FeatureIcons';
+import { generateStoryFromImage, textToSpeech, continueStory, suggestTitles, concludeStory, regenerateChunk, regenerateParagraph, refineStory, generateImageForParagraph, suggestPlotTwists } from '../services/geminiService';
+import { UploadIcon, SparklesIcon, SpeakerIcon, LoadingSpinner, DownloadIcon, HtmlIcon, ContinueIcon, TitleIcon, ConcludeIcon, RegenerateIcon, HintIcon, PlayIcon, PauseIcon, StopIcon, CancelIcon, RefineIcon, IllustrateIcon, PlotTwistIcon, CloseIcon } from './icons/FeatureIcons';
+import { StoryParagraph } from '../types';
 
 // Audio decoding utilities
 const decode = (base64: string): Uint8Array => {
@@ -156,12 +157,19 @@ const getThemeCss = (genre: string): string => {
     }
 };
 
-const StoryGenerator: React.FC = () => {
+interface StoryGeneratorProps {
+    storyParts: StoryParagraph[] | null;
+    onStoryChange: (story: StoryParagraph[] | null) => void;
+}
+
+
+const StoryGenerator: React.FC<StoryGeneratorProps> = ({ storyParts, onStoryChange }) => {
   const [image, setImage] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [theme, setTheme] = useState<string>('');
+  const [characters, setCharacters] = useState<string>('');
+  const [location, setLocation] = useState<string>('');
   const [genre, setGenre] = useState<string>('Fantasy');
-  const [storyParts, setStoryParts] = useState<string[][] | null>(null);
   const [titles, setTitles] = useState<string[] | null>(null);
   const [selectedTitle, setSelectedTitle] = useState<string | null>(null);
   
@@ -171,6 +179,7 @@ const StoryGenerator: React.FC = () => {
   const [isAdvancing, setIsAdvancing] = useState<boolean>(false);
   const [isSuggestingTitles, setIsSuggestingTitles] = useState<boolean>(false);
   const [isRefining, setIsRefining] = useState<boolean>(false);
+  const [isIllustrating, setIsIllustrating] = useState<number | null>(null);
   
   const [regeneratingIndex, setRegeneratingIndex] = useState<{ p: number; c: number } | null>(null);
   const [editingHintFor, setEditingHintFor] = useState<{ p: number; c: number } | null>(null);
@@ -180,6 +189,11 @@ const StoryGenerator: React.FC = () => {
 
   const [error, setError] = useState<string | null>(null);
   const [generatedAudio, setGeneratedAudio] = useState<string | null>(null);
+  
+  const [plotTwistModalOpen, setPlotTwistModalOpen] = useState<boolean>(false);
+  const [plotTwists, setPlotTwists] = useState<string[] | null>(null);
+  const [isSuggestingPlotTwists, setIsSuggestingPlotTwists] = useState<boolean>(false);
+
 
   // Audio Playback State
   const [playbackState, setPlaybackState] = useState<'stopped' | 'playing' | 'paused'>('stopped');
@@ -205,7 +219,7 @@ const StoryGenerator: React.FC = () => {
   }, []);
 
   const getFullStoryText = useCallback(() => {
-    return storyParts ? storyParts.map(p => p.join(' ')).join('\n\n') : '';
+    return storyParts ? storyParts.map(p => p.chunks.join(' ')).join('\n\n') : '';
   }, [storyParts]);
 
   const handleStopPlayback = useCallback(() => {
@@ -219,7 +233,7 @@ const StoryGenerator: React.FC = () => {
   }, []);
 
   const resetStoryState = () => {
-    setStoryParts(null);
+    onStoryChange(null);
     setError(null);
     handleStopPlayback();
     setGeneratedAudio(null);
@@ -267,9 +281,9 @@ const StoryGenerator: React.FC = () => {
         try {
             if (controller.signal.aborted) return;
             const base64Data = (reader.result as string).split(',')[1];
-            const generatedParagraph = await generateStoryFromImage(base64Data, imageFile.type, genre, theme);
+            const generatedParagraph = await generateStoryFromImage(base64Data, imageFile.type, genre, theme, characters, location);
             if (controller.signal.aborted) return;
-            setStoryParts([generatedParagraph]);
+            onStoryChange([{ chunks: generatedParagraph, image: null }]);
         } catch (err) {
             if (!controller.signal.aborted) {
                 setError(err instanceof Error ? err.message : 'Si è verificato un errore sconosciuto.');
@@ -286,7 +300,7 @@ const StoryGenerator: React.FC = () => {
       setIsLoading(false);
       generationAbortControllerRef.current = null;
     }
-  }, [imageFile, theme, genre]);
+  }, [imageFile, theme, genre, characters, location, onStoryChange]);
   
   const invalidateSecondaryContent = () => {
     handleStopPlayback();
@@ -330,15 +344,15 @@ const StoryGenerator: React.FC = () => {
             nextParagraph = await continueStory(currentStory, genre);
         }
         
-        const newStoryParts = [...(storyParts || []), nextParagraph];
-        setStoryParts(newStoryParts);
+        const newStoryParts = [...(storyParts || []), { chunks: nextParagraph, image: null }];
+        onStoryChange(newStoryParts);
         // Invalidate everything except titles, which will be auto-generated
         handleStopPlayback();
         setGeneratedAudio(null);
         audioBufferRef.current = null;
 
         if (isConcluding) {
-            const finalStoryText = newStoryParts.map(p => p.join(' ')).join('\n\n');
+            const finalStoryText = newStoryParts.map(p => p.chunks.join(' ')).join('\n\n');
             await fetchAndSetTitles(finalStoryText);
         }
 
@@ -347,7 +361,7 @@ const StoryGenerator: React.FC = () => {
     } finally {
         setIsAdvancing(false);
     }
-  }, [storyParts, getFullStoryText, genre, fetchAndSetTitles]);
+  }, [storyParts, getFullStoryText, genre, fetchAndSetTitles, onStoryChange]);
 
  const handleRegenerateChunk = useCallback(async (pIndex: number, cIndex: number, hint?: string) => {
     if (!storyParts) return;
@@ -357,15 +371,15 @@ const StoryGenerator: React.FC = () => {
     setError(null);
 
     try {
-        const paragraphContext = storyParts[pIndex].join(' ');
-        const chunkToRegenerate = storyParts[pIndex][cIndex];
+        const paragraphContext = storyParts[pIndex].chunks.join(' ');
+        const chunkToRegenerate = storyParts[pIndex].chunks[cIndex];
 
         const newChunk = await regenerateChunk(paragraphContext, chunkToRegenerate, hint);
 
-        setStoryParts(prev => {
+        onStoryChange(prev => {
             if (!prev) return null;
-            const newStoryParts = prev.map(p => [...p]);
-            newStoryParts[pIndex][cIndex] = newChunk;
+            const newStoryParts = prev.map(p => ({ ...p, chunks: [...p.chunks] }));
+            newStoryParts[pIndex].chunks[cIndex] = newChunk;
             return newStoryParts;
         });
         invalidateSecondaryContent();
@@ -376,7 +390,7 @@ const StoryGenerator: React.FC = () => {
         setRegeneratingIndex(null);
         setHintText('');
     }
-}, [storyParts, editingHintFor]);
+}, [storyParts, editingHintFor, onStoryChange]);
 
  const handleRegenerateParagraph = useCallback(async (pIndex: number, hint?: string) => {
     if (!storyParts) return;
@@ -387,17 +401,17 @@ const StoryGenerator: React.FC = () => {
 
     try {
         const storyContext = {
-            before: storyParts.slice(0, pIndex).map(p => p.join(' ')).join('\n\n'),
-            after: storyParts.slice(pIndex + 1).map(p => p.join(' ')).join('\n\n')
+            before: storyParts.slice(0, pIndex).map(p => p.chunks.join(' ')).join('\n\n'),
+            after: storyParts.slice(pIndex + 1).map(p => p.chunks.join(' ')).join('\n\n')
         };
-        const paragraphToRegenerate = storyParts[pIndex].join(' ');
+        const paragraphToRegenerate = storyParts[pIndex].chunks.join(' ');
 
         const newParagraph = await regenerateParagraph(storyContext, paragraphToRegenerate, hint);
 
-        setStoryParts(prev => {
+        onStoryChange(prev => {
             if (!prev) return null;
-            const newStoryParts = prev.map(p => [...p]);
-            newStoryParts[pIndex] = newParagraph;
+            const newStoryParts = prev.map(p => ({ ...p, chunks: [...p.chunks] }));
+            newStoryParts[pIndex].chunks = newParagraph;
             return newStoryParts;
         });
         invalidateSecondaryContent();
@@ -408,7 +422,7 @@ const StoryGenerator: React.FC = () => {
         setRegeneratingParagraph(null);
         setHintText('');
     }
-}, [storyParts, editingHintForParagraph]);
+}, [storyParts, editingHintForParagraph, onStoryChange]);
 
 
   const handleSuggestTitles = useCallback(async () => {
@@ -423,11 +437,10 @@ const StoryGenerator: React.FC = () => {
     setIsRefining(true);
     setError(null);
     try {
-        const currentStory = getFullStoryText();
-        const refinedStoryParts = await refineStory(currentStory);
+        const refinedStoryParts = await refineStory(storyParts);
         
         if (refinedStoryParts && refinedStoryParts.length > 0) {
-            setStoryParts(refinedStoryParts);
+            onStoryChange(refinedStoryParts);
             // Invalidate only audio content, not titles.
             handleStopPlayback();
             setGeneratedAudio(null);
@@ -441,7 +454,7 @@ const StoryGenerator: React.FC = () => {
     } finally {
         setIsRefining(false);
     }
-  }, [storyParts, getFullStoryText, handleStopPlayback]);
+  }, [storyParts, handleStopPlayback, onStoryChange]);
 
   const getOrGenerateAudio = useCallback(async (): Promise<string> => {
     if (generatedAudio) {
@@ -523,8 +536,11 @@ const StoryGenerator: React.FC = () => {
         const audioDataUri = await blobToBase64(wavBlob);
         const storyTitle = selectedTitle || (titles ? titles[0] : "Storia Generata dall'IA");
 
-        const storyHtml = storyParts?.map(p => `<p>${p.map(chunk => chunk.replace(/</g, "&lt;").replace(/>/g, "&gt;")).join(' ')}</p>`).join('') || '';
-        
+        const storyHtml = storyParts?.map(p =>
+          `<p>${p.chunks.map(chunk => chunk.replace(/</g, "&lt;").replace(/>/g, "&gt;")).join(' ')}</p>` +
+          (p.image ? `<img src="${p.image}" alt="Illustrazione della scena" style="margin-top: 1rem; margin-bottom: 1rem; border-radius: 0.5rem; max-width: 100%;">` : '')
+        ).join('') || '';
+
         const themeCss = getThemeCss(genre);
 
         const pageHtml = `
@@ -587,9 +603,56 @@ const StoryGenerator: React.FC = () => {
       setIsDownloadingAudio(false);
     }
   };
+  
+    const handleGenerateIllustration = useCallback(async (pIndex: number) => {
+        if (!storyParts) return;
+        setIsIllustrating(pIndex);
+        setError(null);
+        try {
+            if (!image || !imageFile) {
+                throw new Error("L'immagine di riferimento iniziale non è stata trovata per l'abbinamento dello stile.");
+            }
+            const initialImageBase64 = image.split(',')[1];
+            const initialImageMimeType = imageFile.type;
 
-  const isActionInProgress = isLoading || isAudioLoading || isDownloadingAudio || isExportingHtml || isAdvancing || isSuggestingTitles || regeneratingIndex !== null || regeneratingParagraph !== null || isRefining;
+            const paragraphText = storyParts[pIndex].chunks.join(' ');
+            const imageUrl = await generateImageForParagraph(paragraphText, initialImageBase64, initialImageMimeType);
+            onStoryChange(prev => {
+                if (!prev) return null;
+                const newStoryParts = [...prev];
+                newStoryParts[pIndex] = { ...newStoryParts[pIndex], image: imageUrl };
+                return newStoryParts;
+            });
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Impossibile generare l\'illustrazione.');
+        } finally {
+            setIsIllustrating(null);
+        }
+    }, [storyParts, onStoryChange, image, imageFile]);
+
+    const handleSuggestPlotTwists = useCallback(async () => {
+        if (!storyParts) return;
+        setPlotTwists(null);
+        setIsSuggestingPlotTwists(true);
+        setPlotTwistModalOpen(true);
+        setError(null);
+        try {
+            const storyText = getFullStoryText();
+            const twists = await suggestPlotTwists(storyText);
+            setPlotTwists(twists);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Impossibile suggerire colpi di scena.');
+            setPlotTwistModalOpen(false);
+        } finally {
+            setIsSuggestingPlotTwists(false);
+        }
+    }, [storyParts, getFullStoryText]);
+
+
+  const isActionInProgress = isLoading || isAudioLoading || isDownloadingAudio || isExportingHtml || isAdvancing || isSuggestingTitles || regeneratingIndex !== null || regeneratingParagraph !== null || isRefining || isIllustrating !== null;
   const isConcluded = storyParts && storyParts.length >= 3;
+  const storyArcStep = storyParts ? Math.min(storyParts.length, 3) : 0; // 1: Inizio, 2: Sviluppo, 3: Conclusione
+
 
   return (
     <div className="flex flex-col gap-6">
@@ -612,7 +675,7 @@ const StoryGenerator: React.FC = () => {
         </div>
         <div className="flex-1 flex flex-col justify-center">
           <h2 className="text-2xl font-semibold mb-4 text-indigo-300">La Tela della Tua Storia</h2>
-          <p className="text-gray-400 mb-4">Carica un'immagine, scegli un genere e lascia che la nostra IA crei un incipit avvincente per te.</p>
+          <p className="text-gray-400 mb-4">Carica un'immagine, definisci i dettagli e lascia che l'IA crei un incipit avvincente.</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
              <div>
                 <label htmlFor="story-genre" className="block text-sm font-medium text-gray-300 mb-2">Genere</label>
@@ -630,6 +693,14 @@ const StoryGenerator: React.FC = () => {
             <div>
                 <label htmlFor="story-theme" className="block text-sm font-medium text-gray-300 mb-2">Tema (opzionale)</label>
                 <input id="story-theme" type="text" value={theme} onChange={(e) => setTheme(e.target.value)} placeholder="es. un artefatto perduto" className="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-shadow"/>
+            </div>
+            <div>
+                <label htmlFor="story-characters" className="block text-sm font-medium text-gray-300 mb-2">Personaggi (opzionale)</label>
+                <input id="story-characters" type="text" value={characters} onChange={(e) => setCharacters(e.target.value)} placeholder="es. Elara, la ladra astuta" className="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-shadow"/>
+            </div>
+            <div>
+                <label htmlFor="story-location" className="block text-sm font-medium text-gray-300 mb-2">Luogo (opzionale)</label>
+                <input id="story-location" type="text" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="es. La città sommersa di Aethel" className="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-shadow"/>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -658,19 +729,39 @@ const StoryGenerator: React.FC = () => {
       
       {storyParts && storyParts.length > 0 && (
         <div className="bg-gray-800 p-6 rounded-lg border border-gray-700 mt-4 animate-fade-in">
+            {/* Story Arc Visualizer */}
+            <div className="mb-6">
+                <div className="flex justify-between items-center text-sm font-semibold text-gray-400 px-1">
+                    <span>Inizio</span>
+                    <span>Sviluppo</span>
+                    <span>Conclusione</span>
+                </div>
+                <div className="w-full bg-gray-700 rounded-full h-2.5 mt-1 flex items-center">
+                    <div className="bg-indigo-600 h-2.5 rounded-full transition-all duration-500 ease-out" style={{ width: `${(storyArcStep / 3) * 100}%` }}></div>
+                </div>
+            </div>
+
           <h2 className="text-2xl font-bold mb-4 text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-indigo-500 h-8">
             {selectedTitle || 'L\'Inizio...'}
           </h2>
           
           <div className="space-y-4">
             {storyParts.map((paragraph, pIndex) => (
-                <div key={pIndex} className="relative group/paragraph">
+                <div key={pIndex} className="relative group/paragraph border-b border-gray-700/50 pb-4 last:border-b-0 last:pb-0">
                     {regeneratingParagraph === pIndex && (
                         <div className="absolute inset-0 bg-gray-800/70 flex items-center justify-center rounded-lg z-30">
                             <LoadingSpinner />
                         </div>
                     )}
                      <div className="absolute top-0 right-0 z-20 hidden group-hover/paragraph:flex bg-gray-900/70 backdrop-blur-sm p-1 rounded-bl-lg rounded-tr-lg">
+                        <button 
+                            onClick={() => handleGenerateIllustration(pIndex)}
+                            disabled={isActionInProgress}
+                            className="p-1 rounded-full hover:bg-gray-600 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors"
+                            title="Illustra Paragrafo"
+                        >
+                           <IllustrateIcon />
+                        </button>
                         <button 
                             onClick={() => handleRegenerateParagraph(pIndex)}
                             disabled={isActionInProgress}
@@ -714,7 +805,7 @@ const StoryGenerator: React.FC = () => {
 
 
                     <p className="text-gray-300 leading-relaxed">
-                        {paragraph.map((chunk, cIndex) => {
+                        {paragraph.chunks.map((chunk, cIndex) => {
                              const isRegenerating = regeneratingIndex?.p === pIndex && regeneratingIndex?.c === cIndex;
                              const isEditingHint = editingHintFor?.p === pIndex && editingHintFor?.c === cIndex;
 
@@ -774,6 +865,16 @@ const StoryGenerator: React.FC = () => {
                             );
                         })}
                     </p>
+                    {isIllustrating === pIndex && (
+                        <div className="mt-4 flex justify-center items-center h-48 bg-gray-700/50 rounded-lg">
+                            <LoadingSpinner />
+                        </div>
+                    )}
+                    {paragraph.image && (
+                         <div className="mt-4">
+                            <img src={paragraph.image} alt={`Illustrazione per il paragrafo ${pIndex + 1}`} className="max-w-full mx-auto rounded-lg shadow-lg border-2 border-gray-600"/>
+                         </div>
+                    )}
                 </div>
             ))}
            </div>
@@ -801,6 +902,10 @@ const StoryGenerator: React.FC = () => {
           )}
 
           <div className="mt-6 flex flex-wrap gap-4 justify-end">
+             <button onClick={handleSuggestPlotTwists} disabled={isActionInProgress || playbackState !== 'stopped'} className="inline-flex items-center gap-2 bg-rose-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-rose-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed">
+              <PlotTwistIcon />
+              Colpo di Scena
+            </button>
             <button onClick={handleSuggestTitles} disabled={isActionInProgress || playbackState !== 'stopped'} className="inline-flex items-center gap-2 bg-teal-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-teal-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed">
               {isSuggestingTitles ? <LoadingSpinner /> : <TitleIcon />}
               {isSuggestingTitles ? 'Suggerisco...' : (selectedTitle ? 'Altri Titoli' : 'Suggerisci Titoli')}
@@ -838,6 +943,29 @@ const StoryGenerator: React.FC = () => {
               {isExportingHtml ? 'Esporto...' : 'Esporta HTML'}
             </button>
           </div>
+        </div>
+      )}
+      {plotTwistModalOpen && (
+        <div className="fixed inset-0 bg-black/60 z-40 flex items-center justify-center p-4 animate-fade-in" onClick={() => setPlotTwistModalOpen(false)}>
+            <div className="bg-gray-800 border border-gray-700 rounded-xl shadow-2xl p-6 w-full max-w-2xl relative" onClick={e => e.stopPropagation()}>
+                <button onClick={() => setPlotTwistModalOpen(false)} className="absolute top-3 right-3 text-gray-400 hover:text-white">
+                    <CloseIcon />
+                </button>
+                <h3 className="text-2xl font-bold text-rose-400 mb-4">Suggerimenti per un Colpo di Scena</h3>
+                {isSuggestingPlotTwists ? (
+                    <div className="flex justify-center items-center h-32">
+                        <LoadingSpinner />
+                    </div>
+                ) : (
+                    <ul className="space-y-4">
+                        {plotTwists?.map((twist, index) => (
+                            <li key={index} className="bg-gray-700/50 p-4 rounded-lg border border-gray-600">
+                                <p className="text-gray-300">{twist}</p>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+            </div>
         </div>
       )}
     </div>

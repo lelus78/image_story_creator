@@ -1,12 +1,15 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { ChatMessage } from '../types';
 import { chatWithBot } from '../services/geminiService';
 import { BotIcon, UserIcon, SendIcon, LoadingSpinner } from './icons/FeatureIcons';
 
-const Chatbot: React.FC = () => {
+interface ChatbotProps {
+  storyContext: string;
+}
+
+const Chatbot: React.FC<ChatbotProps> = ({ storyContext }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([
-    { role: 'model', text: 'Ciao! Come posso aiutarti oggi?' },
+    { role: 'model', text: 'Ciao! Sono il tuo AI Writing Coach. Chiedimi consigli sulla tua storia!' },
   ]);
   const [userInput, setUserInput] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -25,13 +28,14 @@ const Chatbot: React.FC = () => {
     const trimmedInput = userInput.trim();
     if (!trimmedInput || isLoading) return;
 
-    const newMessages: ChatMessage[] = [...messages, { role: 'user', text: trimmedInput }];
+    const userMessage: ChatMessage = { role: 'user', text: trimmedInput };
+    const newMessages: ChatMessage[] = [...messages, userMessage];
     setMessages(newMessages);
     setUserInput('');
     setIsLoading(true);
 
     try {
-      const botResponse = await chatWithBot(newMessages, trimmedInput);
+      const botResponse = await chatWithBot(messages, trimmedInput, storyContext);
       setMessages([...newMessages, { role: 'model', text: botResponse }]);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Sorry, something went wrong.";
@@ -83,7 +87,7 @@ const Chatbot: React.FC = () => {
           type="text"
           value={userInput}
           onChange={(e) => setUserInput(e.target.value)}
-          placeholder="Chiedimi qualsiasi cosa..."
+          placeholder="Chiedi un consiglio..."
           className="flex-1 bg-gray-700 border border-gray-600 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-shadow"
           disabled={isLoading}
         />

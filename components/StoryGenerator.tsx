@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { generateStoryFromImage, textToSpeech, continueStory, suggestTitles, concludeStory, regenerateChunk, regenerateParagraph, refineStory, generateImageForParagraph, suggestPlotTwists } from '../services/geminiService';
-import { UploadIcon, SparklesIcon, SpeakerIcon, LoadingSpinner, DownloadIcon, HtmlIcon, ContinueIcon, TitleIcon, ConcludeIcon, RegenerateIcon, HintIcon, PlayIcon, PauseIcon, StopIcon, CancelIcon, RefineIcon, IllustrateIcon, PlotTwistIcon, CloseIcon } from './icons/FeatureIcons';
-import { StoryParagraph } from '../types';
+import { UploadIcon, SparklesIcon, SpeakerIcon, LoadingSpinner, DownloadIcon, HtmlIcon, ContinueIcon, TitleIcon, ConcludeIcon, RegenerateIcon, HintIcon, PlayIcon, PauseIcon, StopIcon, CancelIcon, RefineIcon, IllustrateIcon, PlotTwistIcon, CloseIcon, ApplySuggestionIcon } from './icons/FeatureIcons';
+import { StoryParagraph, StoryChunk } from '../types';
 
 // Audio decoding utilities
 const decode = (base64: string): Uint8Array => {
@@ -159,11 +159,14 @@ const getThemeCss = (genre: string): string => {
 
 interface StoryGeneratorProps {
     storyParts: StoryParagraph[] | null;
-    onStoryChange: (story: StoryParagraph[] | null) => void;
+    // FIX: Update onStoryChange to accept a state updater function.
+    onStoryChange: React.Dispatch<React.SetStateAction<StoryParagraph[] | null>>;
+    isApplyingSuggestion: boolean;
+    highlightedText: string | null;
 }
 
 
-const StoryGenerator: React.FC<StoryGeneratorProps> = ({ storyParts, onStoryChange }) => {
+const StoryGenerator: React.FC<StoryGeneratorProps> = ({ storyParts, onStoryChange, isApplyingSuggestion, highlightedText }) => {
   const [image, setImage] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [theme, setTheme] = useState<string>('');
@@ -219,7 +222,7 @@ const StoryGenerator: React.FC<StoryGeneratorProps> = ({ storyParts, onStoryChan
   }, []);
 
   const getFullStoryText = useCallback(() => {
-    return storyParts ? storyParts.map(p => p.chunks.join(' ')).join('\n\n') : '';
+    return storyParts ? storyParts.map(p => p.chunks.map(c => c.text).join(' ')).join('\n\n') : '';
   }, [storyParts]);
 
   const handleStopPlayback = useCallback(() => {
@@ -281,6 +284,7 @@ const StoryGenerator: React.FC<StoryGeneratorProps> = ({ storyParts, onStoryChan
         try {
             if (controller.signal.aborted) return;
             const base64Data = (reader.result as string).split(',')[1];
+            // FIX: handle the StoryChunk[] returned by the service directly.
             const generatedParagraph = await generateStoryFromImage(base64Data, imageFile.type, genre, theme, characters, location);
             if (controller.signal.aborted) return;
             onStoryChange([{ chunks: generatedParagraph, image: null }]);
@@ -295,6 +299,7 @@ const StoryGenerator: React.FC<StoryGeneratorProps> = ({ storyParts, onStoryChan
             }
         }
       };
+    // FIX: Correct 'catch' block syntax. `catch (err) =>` is invalid.
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Si è verificato un errore sconosciuto.');
       setIsLoading(false);
@@ -336,7 +341,7 @@ const StoryGenerator: React.FC<StoryGeneratorProps> = ({ storyParts, onStoryChan
     try {
         const currentStory = getFullStoryText();
         const isConcluding = storyParts.length === 2;
-        let nextParagraph: string[];
+        let nextParagraph: StoryChunk[];
 
         if (isConcluding) {
             nextParagraph = await concludeStory(currentStory, genre);
@@ -352,7 +357,7 @@ const StoryGenerator: React.FC<StoryGeneratorProps> = ({ storyParts, onStoryChan
         audioBufferRef.current = null;
 
         if (isConcluding) {
-            const finalStoryText = newStoryParts.map(p => p.chunks.join(' ')).join('\n\n');
+            const finalStoryText = newStoryParts.map(p => p.chunks.map(c => c.text).join(' ')).join('\n\n');
             await fetchAndSetTitles(finalStoryText);
         }
 
@@ -371,15 +376,16 @@ const StoryGenerator: React.FC<StoryGeneratorProps> = ({ storyParts, onStoryChan
     setError(null);
 
     try {
-        const paragraphContext = storyParts[pIndex].chunks.join(' ');
-        const chunkToRegenerate = storyParts[pIndex].chunks[cIndex];
+        const paragraphContext = storyParts[pIndex].chunks.map(c => c.text).join(' ');
+        const chunkToRegenerate = storyParts[pIndex].chunks[cIndex].text;
 
-        const newChunk = await regenerateChunk(paragraphContext, chunkToRegenerate, hint);
+        const newChunkText = await regenerateChunk(paragraphContext, chunkToRegenerate, hint);
 
         onStoryChange(prev => {
             if (!prev) return null;
-            const newStoryParts = prev.map(p => ({ ...p, chunks: [...p.chunks] }));
-            newStoryParts[pIndex].chunks[cIndex] = newChunk;
+            const newStoryParts = prev.map(p => ({ ...p, chunks: p.chunks.map(c => ({...c})) }));
+            newStoryParts[pIndex].chunks[cIndex].text = newChunkText;
+            newStoryParts[pIndex].chunks[cIndex].changed = true; // Mark as changed
             return newStoryParts;
         });
         invalidateSecondaryContent();
@@ -401,17 +407,17 @@ const StoryGenerator: React.FC<StoryGeneratorProps> = ({ storyParts, onStoryChan
 
     try {
         const storyContext = {
-            before: storyParts.slice(0, pIndex).map(p => p.chunks.join(' ')).join('\n\n'),
-            after: storyParts.slice(pIndex + 1).map(p => p.chunks.join(' ')).join('\n\n')
+            before: storyParts.slice(0, pIndex).map(p => p.chunks.map(c => c.text).join(' ')).join('\n\n'),
+            after: storyParts.slice(pIndex + 1).map(p => p.chunks.map(c => c.text).join(' ')).join('\n\n')
         };
-        const paragraphToRegenerate = storyParts[pIndex].chunks.join(' ');
+        const paragraphToRegenerate = storyParts[pIndex].chunks.map(c => c.text).join(' ');
 
-        const newParagraph = await regenerateParagraph(storyContext, paragraphToRegenerate, hint);
+        const newParagraphChunks = await regenerateParagraph(storyContext, paragraphToRegenerate, hint);
 
         onStoryChange(prev => {
             if (!prev) return null;
-            const newStoryParts = prev.map(p => ({ ...p, chunks: [...p.chunks] }));
-            newStoryParts[pIndex].chunks = newParagraph;
+            const newStoryParts = prev.map(p => ({ ...p, chunks: p.chunks.map(c => ({...c})) }));
+            newStoryParts[pIndex].chunks = newParagraphChunks.map(c => ({...c, changed: true}));
             return newStoryParts;
         });
         invalidateSecondaryContent();
@@ -537,7 +543,7 @@ const StoryGenerator: React.FC<StoryGeneratorProps> = ({ storyParts, onStoryChan
         const storyTitle = selectedTitle || (titles ? titles[0] : "Storia Generata dall'IA");
 
         const storyHtml = storyParts?.map(p =>
-          `<p>${p.chunks.map(chunk => chunk.replace(/</g, "&lt;").replace(/>/g, "&gt;")).join(' ')}</p>` +
+          `<p>${p.chunks.map(chunk => chunk.text.replace(/</g, "&lt;").replace(/>/g, "&gt;")).join(' ')}</p>` +
           (p.image ? `<img src="${p.image}" alt="Illustrazione della scena" style="margin-top: 1rem; margin-bottom: 1rem; border-radius: 0.5rem; max-width: 100%;">` : '')
         ).join('') || '';
 
@@ -615,7 +621,7 @@ const StoryGenerator: React.FC<StoryGeneratorProps> = ({ storyParts, onStoryChan
             const initialImageBase64 = image.split(',')[1];
             const initialImageMimeType = imageFile.type;
 
-            const paragraphText = storyParts[pIndex].chunks.join(' ');
+            const paragraphText = storyParts[pIndex].chunks.map(c => c.text).join(' ');
             const imageUrl = await generateImageForParagraph(paragraphText, initialImageBase64, initialImageMimeType);
             onStoryChange(prev => {
                 if (!prev) return null;
@@ -649,7 +655,7 @@ const StoryGenerator: React.FC<StoryGeneratorProps> = ({ storyParts, onStoryChan
     }, [storyParts, getFullStoryText]);
 
 
-  const isActionInProgress = isLoading || isAudioLoading || isDownloadingAudio || isExportingHtml || isAdvancing || isSuggestingTitles || regeneratingIndex !== null || regeneratingParagraph !== null || isRefining || isIllustrating !== null;
+  const isActionInProgress = isLoading || isAudioLoading || isDownloadingAudio || isExportingHtml || isAdvancing || isSuggestingTitles || regeneratingIndex !== null || regeneratingParagraph !== null || isRefining || isIllustrating !== null || isApplyingSuggestion;
   const isConcluded = storyParts && storyParts.length >= 3;
   const storyArcStep = storyParts ? Math.min(storyParts.length, 3) : 0; // 1: Inizio, 2: Sviluppo, 3: Conclusione
 
@@ -728,7 +734,11 @@ const StoryGenerator: React.FC<StoryGeneratorProps> = ({ storyParts, onStoryChan
       {error && <div className="bg-red-900/50 border border-red-700 text-red-300 p-4 rounded-lg">{error}</div>}
       
       {storyParts && storyParts.length > 0 && (
-        <div className="bg-gray-800 p-6 rounded-lg border border-gray-700 mt-4 animate-fade-in">
+        <div className="bg-gray-800 p-6 rounded-lg border border-gray-700 mt-4 animate-fade-in relative">
+            {isApplyingSuggestion && (
+                <div className="absolute inset-0 bg-gray-900/70 backdrop-blur-sm flex items-center justify-center rounded-lg z-30">
+                </div>
+            )}
             {/* Story Arc Visualizer */}
             <div className="mb-6">
                 <div className="flex justify-between items-center text-sm font-semibold text-gray-400 px-1">
@@ -808,13 +818,22 @@ const StoryGenerator: React.FC<StoryGeneratorProps> = ({ storyParts, onStoryChan
                         {paragraph.chunks.map((chunk, cIndex) => {
                              const isRegenerating = regeneratingIndex?.p === pIndex && regeneratingIndex?.c === cIndex;
                              const isEditingHint = editingHintFor?.p === pIndex && editingHintFor?.c === cIndex;
+                             const isHighlightedByHover = highlightedText && chunk.text.includes(highlightedText);
+                             const isHighlightedByChange = chunk.changed;
+
+                             const chunkClasses = [
+                                'transition-all duration-300',
+                                isEditingHint ? 'bg-indigo-900/50' : 'group-hover/chunk:bg-gray-700/75',
+                                isHighlightedByHover ? 'bg-yellow-500/50' : '',
+                                isHighlightedByChange ? 'bg-green-500/30' : ''
+                             ].join(' ');
 
                              return (
                                 <span key={cIndex} className="inline-block relative group/chunk pr-2">
                                     {isRegenerating ? (
                                         <span className="text-indigo-400 animate-pulse">...</span>
                                     ) : (
-                                        <span className={`transition-colors duration-200 ${isEditingHint ? 'bg-indigo-900/50' : 'group-hover/chunk:bg-gray-700/75'}`}>{chunk}</span>
+                                        <span className={chunkClasses}>{chunk.text}</span>
                                     )}
                                     {' '}
                                     <div className="absolute top-0 -right-1 h-full items-center z-10 hidden group-hover/chunk:flex bg-gray-800 pl-1">

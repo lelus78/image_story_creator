@@ -1,6 +1,7 @@
 // @google/genai-sdk-remediation: V1.5.0
 import { GoogleGenAI, Modality, Type, Content } from "@google/genai";
-import { ChatMessage, StoryParagraph } from '../types';
+// FIX: import ChatMessage type
+import { StoryParagraph, ChatResponse, StoryChunk, ActionableSuggestion, ChatMessage } from '../types';
 
 // Helper to initialize the API
 const getGenAI = () => {
@@ -16,9 +17,9 @@ const getGenAI = () => {
  * Splits a long text into smaller, manageable chunks based on sentence endings.
  * This helps in rendering the story progressively and applying chunk-level features.
  * @param text The full text of a paragraph.
- * @returns An array of strings, where each string is a chunk of the original text.
+ * @returns An array of StoryChunk objects.
  */
-const chunkText = (text: string): string[] => {
+const chunkText = (text: string): StoryChunk[] => {
     if (!text) return [];
     // Split by sentences to find natural breaking points.
     const sentences = text.match(/[^.!?]+[.!?]*/g) || [text];
@@ -39,8 +40,8 @@ const chunkText = (text: string): string[] => {
         chunks.push(currentChunk.trim());
     }
     
-    // If no chunks were created (e.g., very short text), return the original text as one chunk.
-    return chunks.length > 0 ? chunks : [text];
+    const finalChunks = chunks.length > 0 ? chunks : [text];
+    return finalChunks.map(c => ({ text: c, changed: false }));
 };
 
 
@@ -51,7 +52,7 @@ export const generateStoryFromImage = async (
   theme: string,
   characters: string,
   location: string
-): Promise<string[]> => {
+): Promise<StoryChunk[]> => {
   const ai = getGenAI();
 
   const imagePart = {
@@ -75,6 +76,7 @@ Genere: ${genre}.`;
     contents: { parts: [imagePart, textPart] },
   });
 
+  // FIX: Return StoryChunk[] as per function signature. The previous implementation returned string[].
   return chunkText(response.text);
 };
 
@@ -105,7 +107,7 @@ export const textToSpeech = async (text: string): Promise<string> => {
 export const continueStory = async (
   currentStory: string,
   genre: string
-): Promise<string[]> => {
+): Promise<StoryChunk[]> => {
   const ai = getGenAI();
   const prompt = `Questa è una storia di genere ${genre} finora:\n\n${currentStory}\n\nContinua la storia con il prossimo paragrafo, scrivendo in italiano. Non ripetere nessuna parte della storia già fornita. Concentrati sullo sviluppo della trama in una direzione nuova e interessante. Scrivi circa 150 parole.`;
 
@@ -121,7 +123,7 @@ export const continueStory = async (
 export const concludeStory = async (
   currentStory: string,
   genre: string
-): Promise<string[]> => {
+): Promise<StoryChunk[]> => {
     const ai = getGenAI();
     const prompt = `Questa è una storia di genere ${genre} finora:\n\n${currentStory}\n\nScrivi un paragrafo finale appropriato e conclusivo per la storia, in italiano. Porta la narrazione a una fine soddisfacente. Non ripetere nessuna parte della storia già fornita. Scrivi circa 150 parole.`;
 
@@ -193,7 +195,7 @@ export const regenerateParagraph = async (
     storyContext: StoryContext,
     paragraphToRegenerate: string,
     hint?: string
-): Promise<string[]> => {
+): Promise<StoryChunk[]> => {
     const ai = getGenAI();
     let prompt = `Ecco una storia. Voglio riscrivere uno dei paragrafi in italiano.\n\n`;
     if (storyContext.before) {
@@ -220,7 +222,7 @@ export const regenerateParagraph = async (
 
 export const refineStory = async (currentStoryParts: StoryParagraph[]): Promise<StoryParagraph[]> => {
     const ai = getGenAI();
-    const currentStory = currentStoryParts.map(p => p.chunks.join(' ')).join('\n\n');
+    const currentStory = currentStoryParts.map(p => p.chunks.map(c => c.text).join(' ')).join('\n\n');
     const prompt = `Affina la seguente storia, che è in italiano. Il tuo compito è migliorare la prosa, il ritmo e le descrizioni, mantenendo intatti la trama principale, i personaggi e il tono. La risposta deve essere in italiano. La storia è attualmente divisa in paragrafi da doppi a capo. Restituisci la storia affinata come un array JSON in cui ogni elemento è un oggetto con una chiave "paragraph" contenente il testo del paragrafo.\n\nStoria:\n${currentStory}`;
 
     const response = await ai.models.generateContent({
@@ -352,10 +354,9 @@ export const chatWithBot = async (
     messageHistory: ChatMessage[],
     newUserMessage: string,
     storyContext: string
-): Promise<string> => {
+): Promise<ChatResponse> => {
     const ai = getGenAI();
 
-    // Map our app's ChatMessage to Gemini's Content format
     const history: Content[] = messageHistory.map(msg => ({
         role: msg.role,
         parts: [{ text: msg.text }]
@@ -368,9 +369,89 @@ export const chatWithBot = async (
           { role: 'user', parts: [{text: newUserMessage }] }
         ],
         config: {
-            systemInstruction: `Sei un AI Writing Coach. L'utente sta scrivendo una storia in italiano. Ecco la versione attuale della sua storia:\n\n---\n${storyContext || "(L'utente non ha ancora scritto nulla.)"}\n---\n\nIl tuo ruolo è fornire feedback costruttivo, rispondere a domande e aiutarlo a migliorare la sua storia. Sii incoraggiante, specifico e d'aiuto. Mantieni le tue risposte concise e dirette. Rispondi sempre e solo in italiano.`,
+            systemInstruction: `Sei un AI Writing Coach. L'utente sta scrivendo una storia in italiano. Ecco la versione attuale della sua storia:\n\n---\n${storyContext || "(L'utente non ha ancora scritto nulla.)"}\n---\n\nIl tuo ruolo è fornire feedback costruttivo. Rispondi in italiano. La tua risposta DEVE essere un oggetto JSON. L'oggetto deve avere una chiave 'responseText' (string) con la tua risposta, e può avere una chiave opzionale 'actionableSuggestions' (array di oggetti). Usa 'actionableSuggestions' per suggerimenti concreti che potrebbero riscrivere parte della storia. Ogni oggetto deve avere una chiave 'suggestion' (stringa del suggerimento) e una chiave opzionale 'targetText' (stringa con la citazione ESATTA dalla storia a cui si riferisce il suggerimento). Esempio: { "responseText": "Ottima idea!", "actionableSuggestions": [{ "suggestion": "Riscrivi il dialogo per renderlo più teso.", "targetText": "disse Elara con calma" }] }`,
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    responseText: { type: Type.STRING },
+                    actionableSuggestions: {
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                suggestion: { type: Type.STRING },
+                                targetText: { type: Type.STRING }
+                            },
+                            required: ['suggestion']
+                        }
+                    }
+                },
+                required: ['responseText']
+            }
         }
     });
 
-    return response.text;
+    try {
+        const jsonStr = response.text.trim();
+        return JSON.parse(jsonStr) as ChatResponse;
+    } catch (e) {
+        console.error("Failed to parse chatbot JSON response:", response.text, e);
+        // Fallback for malformed JSON
+        return { responseText: response.text || "Si è verificato un errore di formattazione della risposta.", actionableSuggestions: [] };
+    }
+};
+
+export const applySuggestionToStory = async (
+    currentStory: string,
+    suggestion: string
+): Promise<StoryParagraph[]> => {
+    const ai = getGenAI();
+    const prompt = `Ecco una storia in italiano:\n\n---\n${currentStory}\n---\n\nApplica questo suggerimento: "${suggestion}".\n\nRiscrivi l'intera storia incorporando il suggerimento. Restituisci un oggetto JSON con una chiave "story". Il valore di "story" deve essere un array di oggetti, dove ogni oggetto rappresenta un paragrafo e ha una chiave "chunks" che è un array di oggetti. Ogni oggetto chunk deve avere una chiave "text" (stringa) e una chiave "changed" (booleano, 'true' se il testo è nuovo o modificato, altrimenti 'false'). Mantieni la coerenza. Non aggiungere commenti. Restituisci solo l'oggetto JSON.`;
+
+    const response = await ai.models.generateContent({
+        model: 'gemini-2.5-pro', // Use a more powerful model for rewriting
+        contents: prompt,
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    story: {
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                chunks: {
+                                    type: Type.ARRAY,
+                                    items: {
+                                        type: Type.OBJECT,
+                                        properties: {
+                                            text: { type: Type.STRING },
+                                            changed: { type: Type.BOOLEAN }
+                                        },
+                                        required: ['text', 'changed']
+                                    }
+                                }
+                            },
+                            required: ['chunks']
+                        }
+                    }
+                },
+                required: ['story']
+            }
+        }
+    });
+
+    try {
+        const jsonStr = response.text.trim();
+        const result: { story: { chunks: StoryChunk[] }[] } = JSON.parse(jsonStr);
+        return result.story.map(p => ({
+            chunks: p.chunks,
+            image: null // Applying a suggestion invalidates old illustrations
+        }));
+    } catch (e) {
+        console.error("Failed to parse suggestion application JSON:", response.text, e);
+        throw new Error("L'IA non è riuscita ad applicare il suggerimento correttamente.");
+    }
 };

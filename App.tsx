@@ -216,6 +216,7 @@ const App: React.FC = () => {
                     <p className="text-sm text-gray-400 mb-4">L'assistente conosce la tua storia. Chiedigli consigli!</p>
                     <Chatbot 
                         storyContext={storyTextForChat} 
+                        genre={genre}
                         onApplySuggestion={handleApplySuggestion}
                         isApplyingSuggestion={isApplyingSuggestion}
                         onHighlightChange={setHighlightedText}

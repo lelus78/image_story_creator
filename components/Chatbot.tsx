@@ -5,12 +5,13 @@ import { BotIcon, UserIcon, SendIcon, LoadingSpinner, ApplySuggestionIcon } from
 
 interface ChatbotProps {
   storyContext: string;
+  genre: string;
   onApplySuggestion: (suggestion: string) => void;
   isApplyingSuggestion: boolean;
   onHighlightChange: (text: string | null) => void;
 }
 
-const Chatbot: React.FC<ChatbotProps> = ({ storyContext, onApplySuggestion, isApplyingSuggestion, onHighlightChange }) => {
+const Chatbot: React.FC<ChatbotProps> = ({ storyContext, genre, onApplySuggestion, isApplyingSuggestion, onHighlightChange }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([
     { role: 'model', text: 'Ciao! Sono il tuo AI Writing Coach. Chiedimi consigli sulla tua storia!' },
   ]);
@@ -38,7 +39,7 @@ const Chatbot: React.FC<ChatbotProps> = ({ storyContext, onApplySuggestion, isAp
     setIsLoading(true);
 
     try {
-      const botResponse = await chatWithBot(messages, trimmedInput, storyContext);
+      const botResponse = await chatWithBot(messages, trimmedInput, storyContext, genre);
       setMessages([...newMessages, { 
           role: 'model', 
           text: botResponse.responseText,

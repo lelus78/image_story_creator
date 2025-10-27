@@ -67,7 +67,13 @@ Genere: ${genre}.`;
   if (theme) prompt += `\nTema: ${theme}.`;
   if (characters) prompt += `\nPersonaggi: ${characters}.`;
   if (location) prompt += `\nLuogo: ${location}.`;
-  prompt += `\nScrivi un paragrafo iniziale avvincente di circa 150 parole. La risposta deve essere esclusivamente in italiano.`;
+
+  if (genre === 'Per Bambini') {
+      prompt += `\nScrivi in uno stile semplice e adatto ai bambini (età 5-8 anni). Usa un linguaggio chiaro, vivace e un tono allegro. Evita temi complessi o spaventosi. Scrivi un paragrafo iniziale di circa 100 parole.`;
+  } else {
+      prompt += `\nScrivi un paragrafo iniziale avvincente di circa 150 parole.`;
+  }
+  prompt += `\nLa risposta deve essere esclusivamente in italiano.`;
 
   const textPart = { text: prompt };
 
@@ -109,7 +115,13 @@ export const continueStory = async (
   genre: string
 ): Promise<StoryChunk[]> => {
   const ai = getGenAI();
-  const prompt = `Questa è una storia di genere ${genre} finora:\n\n${currentStory}\n\nContinua la storia con il prossimo paragrafo, scrivendo in italiano. Non ripetere nessuna parte della storia già fornita. Concentrati sullo sviluppo della trama in una direzione nuova e interessante. Scrivi circa 150 parole.`;
+  let prompt = `Questa è una storia di genere ${genre} finora:\n\n${currentStory}\n\nContinua la storia con il prossimo paragrafo, scrivendo in italiano. Non ripetere nessuna parte della storia già fornita.`;
+
+  if (genre === 'Per Bambini') {
+    prompt += ` Continua in modo divertente e semplice, adatto a un bambino. Scrivi circa 100 parole.`;
+  } else {
+    prompt += ` Concentrati sullo sviluppo della trama in una direzione nuova e interessante. Scrivi circa 150 parole.`;
+  }
 
   const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
@@ -125,7 +137,13 @@ export const concludeStory = async (
   genre: string
 ): Promise<StoryChunk[]> => {
     const ai = getGenAI();
-    const prompt = `Questa è una storia di genere ${genre} finora:\n\n${currentStory}\n\nScrivi un paragrafo finale appropriato e conclusivo per la storia, in italiano. Porta la narrazione a una fine soddisfacente. Non ripetere nessuna parte della storia già fornita. Scrivi circa 150 parole.`;
+    let prompt = `Questa è una storia di genere ${genre} finora:\n\n${currentStory}\n\nScrivi un paragrafo finale appropriato e conclusivo per la storia, in italiano. Non ripetere nessuna parte della storia già fornita.`;
+    
+    if (genre === 'Per Bambini') {
+        prompt += ` Porta la storia a un finale felice e rassicurante, adatto a un bambino. Scrivi circa 100 parole.`;
+    } else {
+        prompt += ` Porta la narrazione a una fine soddisfacente. Scrivi circa 150 parole.`;
+    }
 
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
@@ -135,11 +153,17 @@ export const concludeStory = async (
     return chunkText(response.text);
 };
 
-export const suggestTitles = async (storyText: string): Promise<string[]> => {
+export const suggestTitles = async (storyText: string, genre: string): Promise<string[]> => {
     const ai = getGenAI();
+    let prompt = `Basandoti sulla seguente storia, suggerisci 5 titoli creativi e appropriati in lingua italiana.`;
+    if (genre === 'Per Bambini') {
+        prompt += ` I titoli devono essere giocosi, semplici e magici, adatti ai bambini.`
+    }
+    prompt += ` Restituisci SOLO un array JSON di stringhe.\n\nStoria:\n${storyText}`;
+
     const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
-        contents: `Basandoti sulla seguente storia, suggerisci 5 titoli creativi e appropriati in lingua italiana. Restituisci SOLO un array JSON di stringhe.\n\nStoria:\n${storyText}`,
+        contents: prompt,
         config: {
             responseMimeType: "application/json",
             responseSchema: {
@@ -220,10 +244,14 @@ export const regenerateParagraph = async (
 };
 
 
-export const refineStory = async (currentStoryParts: StoryParagraph[]): Promise<StoryParagraph[]> => {
+export const refineStory = async (currentStoryParts: StoryParagraph[], genre: string): Promise<StoryParagraph[]> => {
     const ai = getGenAI();
     const currentStory = currentStoryParts.map(p => p.chunks.map(c => c.text).join(' ')).join('\n\n');
-    const prompt = `Affina la seguente storia, che è in italiano. Il tuo compito è migliorare la prosa, il ritmo e le descrizioni, mantenendo intatti la trama principale, i personaggi e il tono. La risposta deve essere in italiano. La storia è attualmente divisa in paragrafi da doppi a capo. Restituisci la storia affinata come un array JSON in cui ogni elemento è un oggetto con una chiave "paragraph" contenente il testo del paragrafo.\n\nStoria:\n${currentStory}`;
+    let prompt = `Affina la seguente storia, che è in italiano. Il tuo compito è migliorare la prosa, il ritmo e le descrizioni, mantenendo intatti la trama principale, i personaggi e il tono.`;
+    if (genre === 'Per Bambini') {
+        prompt += ` L'obiettivo è migliorare la storia per un pubblico di bambini. Rendi il linguaggio più semplice e magico, la narrazione più scorrevole e le descrizioni più vivide per la fantasia di un bambino.`
+    }
+    prompt += ` La risposta deve essere in italiano. La storia è attualmente divisa in paragrafi da doppi a capo. Restituisci la storia affinata come un array JSON in cui ogni elemento è un oggetto con una chiave "paragraph" contenente il testo del paragrafo.\n\nStoria:\n${currentStory}`;
 
     const response = await ai.models.generateContent({
         model: "gemini-2.5-pro", // Use a more powerful model for this complex task
@@ -268,7 +296,8 @@ export const refineStory = async (currentStoryParts: StoryParagraph[]): Promise<
 export const generateImageForParagraph = async (
   paragraphText: string,
   initialImageBase64: string,
-  initialImageMimeType: string
+  initialImageMimeType: string,
+  genre: string
 ): Promise<string> => {
     const ai = getGenAI();
     
@@ -279,9 +308,15 @@ export const generateImageForParagraph = async (
         },
     };
     
-    const textPart = {
-        text: `Crea un'illustrazione che corrisponda allo stile artistico dell'immagine di riferimento. NON modificare l'immagine di riferimento. Genera una nuova immagine da zero basata su questa descrizione della scena: "${paragraphText}". Concentrati sui dettagli visivi, i colori e l'illuminazione. Sii creativo.`,
-    };
+    let textPrompt: string;
+
+    if (genre === 'Per Bambini') {
+        textPrompt = `Crea una nuova illustrazione in uno stile da libro per bambini: colorato, fantastico e amichevole. Deve sembrare un disegno o un cartone animato. Ignora lo stile dell'immagine di riferimento e crea qualcosa di completamente nuovo basandoti su questa descrizione della scena: "${paragraphText}". Evita stili realistici, fotografici o spaventosi.`;
+    } else {
+        textPrompt = `Crea un'illustrazione che corrisponda allo stile artistico dell'immagine di riferimento. NON modificare l'immagine di riferimento. Genera una nuova immagine da zero basata su questa descrizione della scena: "${paragraphText}". Concentrati sui dettagli visivi, i colori e l'illuminazione. Sii creativo.`;
+    }
+
+    const textPart = { text: textPrompt };
 
     const MAX_RETRIES = 2; // Total 3 attempts
     for (let i = 0; i <= MAX_RETRIES; i++) {
@@ -333,11 +368,14 @@ export const generateImageForParagraph = async (
     throw new Error("Generazione immagine fallita dopo diversi tentativi.");
 };
 
-export const suggestActionablePlotTwists = async (storyText: string, category: string, focus: string): Promise<string[]> => {
+export const suggestActionablePlotTwists = async (storyText: string, category: string, focus: string, genre: string): Promise<string[]> => {
     const ai = getGenAI();
     
-    let prompt = `Basandoti sulla seguente storia, suggerisci 3 colpi di scena sorprendenti e interessanti in lingua italiana.
-Tipo di colpo di scena richiesto: "${category}".`;
+    let prompt = `Basandoti sulla seguente storia, suggerisci 3 colpi di scena sorprendenti e interessanti in lingua italiana.`;
+    if (genre === 'Per Bambini') {
+        prompt += ` I colpi di scena devono essere divertenti, adatti ai bambini e non spaventosi (es. una scoperta magica, un malinteso buffo, un nuovo amico inaspettato).`;
+    }
+    prompt += `\nTipo di colpo di scena richiesto: "${category}".`;
 
     if (focus) {
         prompt += `\nElemento su cui concentrarsi: "${focus}".`;
@@ -427,7 +465,8 @@ export const applyPlotTwist = async (
 export const chatWithBot = async (
     messageHistory: ChatMessage[],
     newUserMessage: string,
-    storyContext: string
+    storyContext: string,
+    genre: string
 ): Promise<ChatResponse> => {
     const ai = getGenAI();
 
@@ -436,6 +475,16 @@ export const chatWithBot = async (
         parts: [{ text: msg.text }]
     }));
     
+    let systemInstruction = `Sei un AI Writing Coach. L'utente sta scrivendo una storia in italiano. Ecco la versione attuale della sua storia:\n\n---\n${storyContext || "(L'utente non ha ancora scritto nulla.)"}\n---\n\n`;
+
+    if (genre === 'Per Bambini') {
+        systemInstruction += `La storia è per bambini. Adotta la personalità di un simpatico cantastorie per bambini. Usa un tono incoraggiante e giocoso. Fornisci suggerimenti per rendere la storia più divertente, magica e facile da capire per un bambino. `;
+    } else {
+        systemInstruction += `Il tuo ruolo è fornire feedback costruttivo. Rispondi in italiano. `;
+    }
+
+    systemInstruction += `La tua risposta DEVE essere un oggetto JSON. L'oggetto deve avere una chiave 'responseText' (string) con la tua risposta, e può avere una chiave opzionale 'actionableSuggestions' (array di oggetti). Usa 'actionableSuggestions' per suggerimenti concreti che potrebbero riscrivere parte della storia. Ogni oggetto deve avere una chiave 'suggestion' (stringa del suggerimento) e una chiave opzionale 'targetText' (stringa con la citazione ESATTA dalla storia a cui si riferisce il suggerimento). Esempio: { "responseText": "Ottima idea!", "actionableSuggestions": [{ "suggestion": "Riscrivi il dialogo per renderlo più teso.", "targetText": "disse Elara con calma" }] }`;
+
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: [
@@ -443,7 +492,7 @@ export const chatWithBot = async (
           { role: 'user', parts: [{text: newUserMessage }] }
         ],
         config: {
-            systemInstruction: `Sei un AI Writing Coach. L'utente sta scrivendo una storia in italiano. Ecco la versione attuale della sua storia:\n\n---\n${storyContext || "(L'utente non ha ancora scritto nulla.)"}\n---\n\nIl tuo ruolo è fornire feedback costruttivo. Rispondi in italiano. La tua risposta DEVE essere un oggetto JSON. L'oggetto deve avere una chiave 'responseText' (string) con la tua risposta, e può avere una chiave opzionale 'actionableSuggestions' (array di oggetti). Usa 'actionableSuggestions' per suggerimenti concreti che potrebbero riscrivere parte della storia. Ogni oggetto deve avere una chiave 'suggestion' (stringa del suggerimento) e una chiave opzionale 'targetText' (stringa con la citazione ESATTA dalla storia a cui si riferisce il suggerimento). Esempio: { "responseText": "Ottima idea!", "actionableSuggestions": [{ "suggestion": "Riscrivi il dialogo per renderlo più teso.", "targetText": "disse Elara con calma" }] }`,
+            systemInstruction,
             responseMimeType: "application/json",
             responseSchema: {
                 type: Type.OBJECT,

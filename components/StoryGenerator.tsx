@@ -146,6 +146,15 @@ const getThemeCss = (genre: string): string => {
         h1 { font-family: 'Poppins', sans-serif; color: #ff6347; font-size: 2.3rem; text-align: center; margin-bottom: 1rem; }
         p { color: #4f4f4f; margin-bottom: 1em; }
         audio { width: 100%; margin-top: 2rem; }`;
+        case 'Per Bambini':
+            return `
+        @import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@700&family=Nunito&display=swap');
+        body { font-family: 'Nunito', sans-serif; line-height: 1.7; background-color: #e0f7fa; color: #2c5663; margin: 0; padding: 2rem; background-image: linear-gradient(to top, #c1dfc4 0%, #deecdd 100%); }
+        .container { max-width: 750px; margin: 0 auto; background-color: #ffffff; border-radius: 1.5rem; padding: 2.5rem; border: 3px solid #f8c86e; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1); }
+        img { max-width: 100%; border-radius: 1rem; margin-bottom: 1.5rem; }
+        h1 { font-family: 'Baloo 2', cursive; color: #ff7849; font-size: 2.6rem; text-align: center; margin-bottom: 1.5rem; }
+        p { color: #3b6670; margin-bottom: 1em; font-size: 1.1rem; }
+        audio { width: 100%; margin-top: 2rem; }`;
         default: // Fantasy theme as default
             return `
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; background: #090a0f; background: radial-gradient(ellipse at bottom, #1b2735 0%, #090a0f 100%); color: #f3f4f6; margin: 0; padding: 2rem; }
@@ -327,7 +336,7 @@ const StoryGenerator: React.FC<StoryGeneratorProps> = (props) => {
     onTitleChange(null);
     setError(null);
     try {
-        const suggestedTitles = await suggestTitles(storyText);
+        const suggestedTitles = await suggestTitles(storyText, genre);
         setTitles(suggestedTitles);
         if (suggestedTitles && suggestedTitles.length > 0) {
             onTitleChange(suggestedTitles[0]);
@@ -337,7 +346,7 @@ const StoryGenerator: React.FC<StoryGeneratorProps> = (props) => {
     } finally {
         setIsSuggestingTitles(false);
     }
-  }, [onTitleChange]);
+  }, [onTitleChange, genre]);
 
   const handleAdvanceStory = useCallback(async () => {
     if (!storyParts || storyParts.length === 0) return;
@@ -449,7 +458,7 @@ const StoryGenerator: React.FC<StoryGeneratorProps> = (props) => {
     setIsRefining(true);
     setError(null);
     try {
-        const refinedStoryParts = await refineStory(storyParts);
+        const refinedStoryParts = await refineStory(storyParts, genre);
         
         if (refinedStoryParts && refinedStoryParts.length > 0) {
             onStoryChange(refinedStoryParts);
@@ -466,7 +475,7 @@ const StoryGenerator: React.FC<StoryGeneratorProps> = (props) => {
     } finally {
         setIsRefining(false);
     }
-  }, [storyParts, handleStopPlayback, onStoryChange]);
+  }, [storyParts, genre, handleStopPlayback, onStoryChange]);
 
   const getOrGenerateAudio = useCallback(async (): Promise<string> => {
     if (generatedAudio) {
@@ -628,7 +637,7 @@ const StoryGenerator: React.FC<StoryGeneratorProps> = (props) => {
             const initialImageMimeType = imageFile.type;
 
             const paragraphText = storyParts[pIndex].chunks.map(c => c.text).join(' ');
-            const imageUrl = await generateImageForParagraph(paragraphText, initialImageBase64, initialImageMimeType);
+            const imageUrl = await generateImageForParagraph(paragraphText, initialImageBase64, initialImageMimeType, genre);
             onStoryChange(prev => {
                 if (!prev) return null;
                 const newStoryParts = [...prev];
@@ -640,7 +649,7 @@ const StoryGenerator: React.FC<StoryGeneratorProps> = (props) => {
         } finally {
             setIsIllustrating(null);
         }
-    }, [storyParts, onStoryChange, image, imageFile]);
+    }, [storyParts, onStoryChange, image, imageFile, genre]);
 
     const handleOpenPlotTwistModal = useCallback(() => {
         setPlotTwists(null);
@@ -657,14 +666,14 @@ const StoryGenerator: React.FC<StoryGeneratorProps> = (props) => {
         setError(null);
         try {
             const storyText = getFullStoryText();
-            const twists = await suggestActionablePlotTwists(storyText, plotTwistCategory, plotTwistFocus);
+            const twists = await suggestActionablePlotTwists(storyText, plotTwistCategory, plotTwistFocus, genre);
             setPlotTwists(twists);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Impossibile suggerire colpi di scena.');
         } finally {
             setIsSuggestingPlotTwists(false);
         }
-    }, [storyParts, getFullStoryText, plotTwistCategory, plotTwistFocus]);
+    }, [storyParts, getFullStoryText, plotTwistCategory, plotTwistFocus, genre]);
 
     const handleApplyPlotTwist = useCallback(async (twist: string) => {
         if (!storyParts) return;
@@ -731,6 +740,7 @@ const StoryGenerator: React.FC<StoryGeneratorProps> = (props) => {
                     <option value="Adventure">Avventura</option>
                     <option value="Thriller">Thriller</option>
                     <option value="Humor">Umorismo</option>
+                    <option value="Per Bambini">Per Bambini</option>
                 </select>
             </div>
             <div>
@@ -1068,6 +1078,7 @@ const StoryGenerator: React.FC<StoryGeneratorProps> = (props) => {
                                 <option value="Rivelazione sul Personaggio">🎭 Rivelazione sul Personaggio</option>
                                 <option value="Tradimento Inatteso">🤝 Tradimento Inatteso</option>
                                 <option value="Evento che Cambia Tutto">🌍 Evento che Cambia Tutto</option>
+                                <option value="Un Incontro Magico">✨ Un Incontro Magico</option>
                                 <option value="Dilemma Morale">🤔 Dilemma Morale</option>
                                 <option value="Oggetto Misterioso">🔑 Oggetto Misterioso</option>
                             </select>

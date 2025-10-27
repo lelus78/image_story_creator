@@ -333,12 +333,21 @@ export const generateImageForParagraph = async (
     throw new Error("Generazione immagine fallita dopo diversi tentativi.");
 };
 
-
-export const suggestPlotTwists = async (storyText: string): Promise<string[]> => {
+export const suggestActionablePlotTwists = async (storyText: string, category: string, focus: string): Promise<string[]> => {
     const ai = getGenAI();
+    
+    let prompt = `Basandoti sulla seguente storia, suggerisci 3 colpi di scena sorprendenti e interessanti in lingua italiana.
+Tipo di colpo di scena richiesto: "${category}".`;
+
+    if (focus) {
+        prompt += `\nElemento su cui concentrarsi: "${focus}".`;
+    }
+
+    prompt += `\nFornisci suggerimenti che siano coerenti con la storia ma che la portino in una direzione inaspettata. Restituisci SOLO un array JSON di stringhe, dove ogni stringa è un suggerimento di colpo di scena.\n\nStoria:\n${storyText}`;
+    
     const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
-        contents: `Basandoti sulla seguente storia, suggerisci 3 colpi di scena sorprendenti e interessanti in lingua italiana che potrebbero essere introdotti. Restituisci SOLO un array JSON di stringhe, dove ogni stringa è un suggerimento di colpo di scena.\n\nStoria:\n${storyText}`,
+        contents: prompt,
         config: {
             responseMimeType: "application/json",
             responseSchema: {
@@ -358,6 +367,60 @@ export const suggestPlotTwists = async (storyText: string): Promise<string[]> =>
     } catch (e) {
         console.error("Failed to parse plot twists JSON:", response.text, e);
         throw new Error("Could not get plot twist suggestions from the AI. The format was incorrect.");
+    }
+};
+
+export const applyPlotTwist = async (
+    currentStory: string,
+    plotTwist: string
+): Promise<StoryParagraph[]> => {
+    const ai = getGenAI();
+    const prompt = `Ecco una storia in italiano:\n\n---\n${currentStory}\n---\n\nIl tuo compito è integrare in modo profondo e coerente il seguente colpo di scena nella storia: "${plotTwist}".\n\nNON limitarti ad aggiungere un paragrafo alla fine. Riscrivi l'INTERA storia per incorporare questo colpo di scena in modo naturale. Questo potrebbe richiedere:\n1. Modificare frasi o dettagli nei paragrafi esistenti per creare prefigurazione (foreshadowing) o per allineare i fatti al nuovo colpo di scena.\n2. Riscrivere intere sezioni per cambiare le motivazioni o le azioni dei personaggi.\n3. Aggiungere uno o più nuovi paragrafi, se necessario, per sviluppare il colpo di scena.\n\nL'obiettivo è una narrazione unificata e coerente in cui il colpo di scena sembri intenzionale fin dall'inizio.\n\nRestituisci un oggetto JSON con una chiave "story". Il valore di "story" deve essere un array di oggetti, dove ogni oggetto rappresenta un paragrafo e ha una chiave "chunks" che è un array di oggetti. Ogni oggetto chunk deve avere una chiave "text" (stringa) e una chiave "changed" (booleano, 'true' se il testo è nuovo o è stato modificato in modo significativo, altrimenti 'false'). Mantieni la coerenza. Non aggiungere commenti. Restituisci solo l'oggetto JSON.`;
+
+    const response = await ai.models.generateContent({
+        model: 'gemini-2.5-pro', // Use a more powerful model for rewriting
+        contents: prompt,
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    story: {
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                chunks: {
+                                    type: Type.ARRAY,
+                                    items: {
+                                        type: Type.OBJECT,
+                                        properties: {
+                                            text: { type: Type.STRING },
+                                            changed: { type: Type.BOOLEAN }
+                                        },
+                                        required: ['text', 'changed']
+                                    }
+                                }
+                            },
+                            required: ['chunks']
+                        }
+                    }
+                },
+                required: ['story']
+            }
+        }
+    });
+
+    try {
+        const jsonStr = response.text.trim();
+        const result: { story: { chunks: StoryChunk[] }[] } = JSON.parse(jsonStr);
+        return result.story.map(p => ({
+            chunks: p.chunks,
+            image: null // Applying a plot twist invalidates old illustrations
+        }));
+    } catch (e) {
+        console.error("Failed to parse plot twist application JSON:", response.text, e);
+        throw new Error("L'IA non è riuscita ad applicare il colpo di scena correttamente.");
     }
 };
 

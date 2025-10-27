@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { generateStoryFromImage, textToSpeech, continueStory, suggestTitles, concludeStory, regenerateChunk, regenerateParagraph, refineStory, generateImageForParagraph, suggestPlotTwists } from '../services/geminiService';
+import { generateStoryFromImage, textToSpeech, continueStory, suggestTitles, concludeStory, regenerateChunk, regenerateParagraph, refineStory, generateImageForParagraph, suggestActionablePlotTwists, applyPlotTwist } from '../services/geminiService';
 import { UploadIcon, SparklesIcon, SpeakerIcon, LoadingSpinner, DownloadIcon, HtmlIcon, ContinueIcon, TitleIcon, ConcludeIcon, RegenerateIcon, HintIcon, PlayIcon, PauseIcon, StopIcon, CancelIcon, RefineIcon, IllustrateIcon, PlotTwistIcon, CloseIcon, ApplySuggestionIcon } from './icons/FeatureIcons';
 import { StoryParagraph, StoryChunk } from '../types';
 
@@ -122,7 +122,7 @@ const getThemeCss = (genre: string): string => {
         case 'Adventure':
              return `
         @import url('https://fonts.googleapis.com/css2?family=IM+Fell+English+SC&family=Merriweather&display=swap');
-        body { font-family: 'Merriweather', serif; line-height: 1.7; background-color: #f5f1e9; color: #3a2e1d; margin: 0; padding: 2rem; background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyCAYAAAAeP4ixAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAyJpVFh0WE1MOmNvbS5hZG9iZS54bXAAAAAAADw/eHBhY2tldCBiZWdpbj0i77u/IiBpZD0iVzVNME1wQ2VoaUh6cmVTek5UY3prYzlkIj8+IDx4OnhtcG1ldGEgeG1sbnM6eD0iYWRvYmU6bnM6bWV0YS8iIHg6eG1wdGs9IkFkb2JlIFhNUCBDb3JlIDUuMy1jMDExIDY2LjE0NTY2MSwgMjAxMi8wMi8wNi0xNDo1NjoyNyAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1sbnM6c3RSZWY9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZVJlZiMiIHhtcDpDcmVhdG9yVG9vbD0iQWRvYmUgUGhvdG9zaG9wIENTNiAoV2luZG93cykiIHhtcE1NOkluc3RhbmNlSUQ9InhtcC5paWQ6NkY4Q0Q3QjE3RDdDMTFFN0FBN0VDMDI4Njc0RTBDOTAiIHhtcE1NOkRvY3VtZW50SUQ9InhtcC5kaWQ6NkY4Q0Q3QjI3RDdDMTFFN0FBN0VDMDI4Njc0RTBDOTAiPiA8eG1wTU06RGVyaXZlZEZyb20gc3RSZWY6aW5zdGFuY2VJRD0ieG1wLmlpZDo2RjhDRDdBRjdEN0MxMUU3QUE3RUMwMjg2NzRFMEM5MCIgc3RSZWY6ZG9jdW1lbnRJRD0ieG1wLmRpZDo2RjhDRDdCMDBEN0MxMUU3QUE3RUMwMjg2NzRFMEM5MCIvPiA8L3JkZjpEZXNjcmlwdGlvbj4gPC9yZGY6UkRGPiA8L3g6eG1wYWNrZXQ+IDw/eHBhY2tldCBlbmQ9InIiPz6aJ2VlAAAAsUlEQVR42uzasQ3CQAxA0U6EaNS0QZlo0sQYxY3oUM3CRk3K/QkCwfE47sE/kO9iJ7uXmUwm828GAA+gC3AC3MM3gA7gE/QBbsBPAM/zB3ADrIB2gA/AGrABHoAEeAOWwCzYAb4AUwAnwAVwDRwD34CXwI+ABPAEtAGCwIvgS/An0BsoBF4E/gStAn8C3wL/An8CPwI/Am+BjcAPwb/Bj8CzwI/Au8CXwE5gJ7A3sDeYyWSy+wswAF+e1e/g9N5lAAAAAElFTkSuQmCC"); }
+        body { font-family: 'Merriweather', serif; line-height: 1.7; background-color: #f5f1e9; color: #3a2e1d; margin: 0; padding: 2rem; background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyCAYAAAAeP4ixAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAyJpVFh0WE1MOmNvbS5hZG9iZS54bXAAAAAAADw/eHBhY2tldCBiZWdpbj0i77u/IiBpZD0iVzVNME1wQ2VoaUh6cmVTek5UY3prYzlkIj8+IDx4OnhtcG1ldGEgeG1sbnM6eD0iYWRvYmU6bnM6bWV0YS8iIHg6eG1wdGs9IkFkb2JlIFhNUCBDb3JlIDUuMy1jMDExIDY2LjE0NTY2MSwgMjAxMi8wMi8wNi0xNDo1NjoyNyAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1sbnM6c3RSZWY9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZVJlZiMiIHhtcDpDcmVhdG9yVG9vbD0iQWRvYmUgUGhvdG9zaG9wIENTNiAoV2luZG93cykiIHhtcE1NOkluc3RhbmNlSUQ9InhtcC5paWQ6NkY4Q0Q3QjE3RDdDMTFFN0FBN0VDMDI4Njc0RTBDOTAiIHhtcE1NOkRvY3VtZW50SUQ9InhtcC5kaWQ6NkY4Q0Q3QjI3RDdDMTFFN0FBN0VDMDI4Njc0RTBDOTAiPiA<eG1wTU06RGVyaXZlZEZyb20gc3RSZWY6aW5zdGFuY2VJRD0ieG1wLmlpZDo2RjhDRDdBRjdEN0MxMUU3QUE3RUMwMjg2NzRFMEM5MCIgc3RSZWY6ZG9jdW1lbnRJRD0ieG1wLmRpZDo2RjhDRDdCMDBEN0MxMUU3QUE3RUMwMjg2NzRFMEM5MCIvPiA8L3JkZjpEZXNjcmlwdGlvbj4gPC9yZGY6UkRGPiA8L3g6eG1wYWNrZXQ+IDw/eHBhY2tldCBlbmQ9InIiPz6aJ2VlAAAAsUlEQVR42uzasQ3CQAxA0U6EaNS0QZlo0sQYxY3oUM3CRk3K/QkCwfE47sE/kO9iJ7uXmUwm828GAA+gC3AC3MM3gA7gE/QBbsBPAM/zB3ADrIB2gA/AGrABHoAEeAOWwCzYAb4AUwAnwAVwDRwD34CXwI+ABPAEtAGCwIvgS/An0BsoBF4E/gStAn8C3wL/An8CPwI/Am+BjcAPwb/Bj8CzwI/Au8CXwE5gJ7A3sDeYyWSy+wswAF+e1e/g9N5lAAAAAElFTkSuQmCC"); }
         .container { max-width: 800px; margin: 0 auto; background-color: #e8e2d4; border-radius: 0.5rem; padding: 2.5rem; border: 3px solid #8c785d; box-shadow: 0 0 20px rgba(0,0,0,0.2); }
         img { max-width: 100%; border-radius: 0.25rem; margin-bottom: 1.5rem; border: 1px solid #c5b8a3; }
         h1 { font-family: 'IM Fell English SC', serif; color: #6b4f2c; font-size: 2.5rem; text-align: center; margin-bottom: 1.5rem; }
@@ -193,9 +193,13 @@ const StoryGenerator: React.FC<StoryGeneratorProps> = ({ storyParts, onStoryChan
   const [error, setError] = useState<string | null>(null);
   const [generatedAudio, setGeneratedAudio] = useState<string | null>(null);
   
+  // Plot Twist Modal State
   const [plotTwistModalOpen, setPlotTwistModalOpen] = useState<boolean>(false);
   const [plotTwists, setPlotTwists] = useState<string[] | null>(null);
   const [isSuggestingPlotTwists, setIsSuggestingPlotTwists] = useState<boolean>(false);
+  const [isApplyingPlotTwist, setIsApplyingPlotTwist] = useState<boolean>(false);
+  const [plotTwistCategory, setPlotTwistCategory] = useState<string>('Sorprendimi');
+  const [plotTwistFocus, setPlotTwistFocus] = useState<string>('');
 
 
   // Audio Playback State
@@ -636,26 +640,50 @@ const StoryGenerator: React.FC<StoryGeneratorProps> = ({ storyParts, onStoryChan
         }
     }, [storyParts, onStoryChange, image, imageFile]);
 
-    const handleSuggestPlotTwists = useCallback(async () => {
+    const handleOpenPlotTwistModal = useCallback(() => {
+        setPlotTwists(null);
+        setPlotTwistCategory('Sorprendimi');
+        setPlotTwistFocus('');
+        setError(null);
+        setPlotTwistModalOpen(true);
+    }, []);
+
+    const handleFetchPlotTwists = useCallback(async () => {
         if (!storyParts) return;
         setPlotTwists(null);
         setIsSuggestingPlotTwists(true);
-        setPlotTwistModalOpen(true);
         setError(null);
         try {
             const storyText = getFullStoryText();
-            const twists = await suggestPlotTwists(storyText);
+            const twists = await suggestActionablePlotTwists(storyText, plotTwistCategory, plotTwistFocus);
             setPlotTwists(twists);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Impossibile suggerire colpi di scena.');
-            setPlotTwistModalOpen(false);
         } finally {
             setIsSuggestingPlotTwists(false);
         }
-    }, [storyParts, getFullStoryText]);
+    }, [storyParts, getFullStoryText, plotTwistCategory, plotTwistFocus]);
+
+    const handleApplyPlotTwist = useCallback(async (twist: string) => {
+        if (!storyParts) return;
+
+        setPlotTwistModalOpen(false);
+        setIsApplyingPlotTwist(true);
+        setError(null);
+        try {
+            const currentStory = getFullStoryText();
+            const newStoryParts = await applyPlotTwist(currentStory, twist);
+            onStoryChange(newStoryParts);
+            invalidateSecondaryContent(); // This resets audio and titles
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Impossibile applicare il colpo di scena.');
+        } finally {
+            setIsApplyingPlotTwist(false);
+        }
+    }, [storyParts, getFullStoryText, onStoryChange]);
 
 
-  const isActionInProgress = isLoading || isAudioLoading || isDownloadingAudio || isExportingHtml || isAdvancing || isSuggestingTitles || regeneratingIndex !== null || regeneratingParagraph !== null || isRefining || isIllustrating !== null || isApplyingSuggestion;
+  const isActionInProgress = isLoading || isAudioLoading || isDownloadingAudio || isExportingHtml || isAdvancing || isSuggestingTitles || regeneratingIndex !== null || regeneratingParagraph !== null || isRefining || isIllustrating !== null || isApplyingSuggestion || isApplyingPlotTwist;
   const isConcluded = storyParts && storyParts.length >= 3;
   const storyArcStep = storyParts ? Math.min(storyParts.length, 3) : 0; // 1: Inizio, 2: Sviluppo, 3: Conclusione
 
@@ -735,8 +763,12 @@ const StoryGenerator: React.FC<StoryGeneratorProps> = ({ storyParts, onStoryChan
       
       {storyParts && storyParts.length > 0 && (
         <div className="bg-gray-800 p-6 rounded-lg border border-gray-700 mt-4 animate-fade-in relative">
-            {isApplyingSuggestion && (
-                <div className="absolute inset-0 bg-gray-900/70 backdrop-blur-sm flex items-center justify-center rounded-lg z-30">
+            {(isApplyingSuggestion || isApplyingPlotTwist) && (
+                <div className="absolute inset-0 bg-gray-900/70 backdrop-blur-sm flex flex-col items-center justify-center rounded-lg z-30">
+                    <LoadingSpinner />
+                    <span className="mt-2 text-indigo-300">
+                        {isApplyingSuggestion ? 'Applico il suggerimento del coach...' : 'Intreccio il colpo di scena nella storia...'}
+                    </span>
                 </div>
             )}
             {/* Story Arc Visualizer */}
@@ -921,7 +953,7 @@ const StoryGenerator: React.FC<StoryGeneratorProps> = ({ storyParts, onStoryChan
           )}
 
           <div className="mt-6 flex flex-wrap gap-4 justify-end">
-             <button onClick={handleSuggestPlotTwists} disabled={isActionInProgress || playbackState !== 'stopped'} className="inline-flex items-center gap-2 bg-rose-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-rose-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed">
+             <button onClick={handleOpenPlotTwistModal} disabled={isActionInProgress || playbackState !== 'stopped'} className="inline-flex items-center gap-2 bg-rose-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-rose-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed">
               <PlotTwistIcon />
               Colpo di Scena
             </button>
@@ -970,20 +1002,70 @@ const StoryGenerator: React.FC<StoryGeneratorProps> = ({ storyParts, onStoryChan
                 <button onClick={() => setPlotTwistModalOpen(false)} className="absolute top-3 right-3 text-gray-400 hover:text-white">
                     <CloseIcon />
                 </button>
-                <h3 className="text-2xl font-bold text-rose-400 mb-4">Suggerimenti per un Colpo di Scena</h3>
+                <h3 className="text-2xl font-bold text-rose-400 mb-4">Intreccia un Colpo di Scena</h3>
+
                 {isSuggestingPlotTwists ? (
-                    <div className="flex justify-center items-center h-32">
+                    <div className="flex justify-center items-center h-48">
                         <LoadingSpinner />
+                        <span className="ml-3 text-gray-300">Cerco l'ispirazione...</span>
+                    </div>
+                ) : plotTwists ? (
+                    <div>
+                        <h4 className="text-lg font-semibold text-gray-300 mb-3">Scegli un'idea e lascia che l'IA la scriva:</h4>
+                        <ul className="space-y-3">
+                            {plotTwists.map((twist, index) => (
+                                <li key={index} className="bg-gray-700/50 p-3 rounded-lg border border-gray-600 flex items-center justify-between gap-4">
+                                    <p className="text-gray-300 flex-1">{twist}</p>
+                                    <button
+                                        onClick={() => handleApplyPlotTwist(twist)}
+                                        className="flex-shrink-0 flex items-center gap-2 bg-indigo-600 text-white font-bold py-2 px-3 rounded-lg hover:bg-indigo-700 transition-colors duration-200"
+                                    >
+                                        <SparklesIcon />
+                                        Scrivi
+                                    </button>
+                                </li>
+                            ))}
+                        </ul>
                     </div>
                 ) : (
-                    <ul className="space-y-4">
-                        {plotTwists?.map((twist, index) => (
-                            <li key={index} className="bg-gray-700/50 p-4 rounded-lg border border-gray-600">
-                                <p className="text-gray-300">{twist}</p>
-                            </li>
-                        ))}
-                    </ul>
+                    <div className="space-y-4">
+                        <div>
+                            <label htmlFor="twist-category" className="block text-sm font-medium text-gray-300 mb-2">1. Scegli il tipo di colpo di scena</label>
+                            <select 
+                                id="twist-category" 
+                                value={plotTwistCategory}
+                                onChange={(e) => setPlotTwistCategory(e.target.value)}
+                                className="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-shadow"
+                            >
+                                <option value="Sorprendimi">🔮 Sorprendimi</option>
+                                <option value="Rivelazione sul Personaggio">🎭 Rivelazione sul Personaggio</option>
+                                <option value="Tradimento Inatteso">🤝 Tradimento Inatteso</option>
+                                <option value="Evento che Cambia Tutto">🌍 Evento che Cambia Tutto</option>
+                                <option value="Dilemma Morale">🤔 Dilemma Morale</option>
+                                <option value="Oggetto Misterioso">🔑 Oggetto Misterioso</option>
+                            </select>
+                        </div>
+                         <div>
+                            <label htmlFor="twist-focus" className="block text-sm font-medium text-gray-300 mb-2">2. Su chi o cosa vuoi concentrarti? (Opzionale)</label>
+                            <input 
+                                id="twist-focus" 
+                                type="text" 
+                                value={plotTwistFocus}
+                                onChange={(e) => setPlotTwistFocus(e.target.value)}
+                                placeholder="es. Kael, il mentore del protagonista" 
+                                className="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-shadow"
+                            />
+                        </div>
+                        <button
+                            onClick={handleFetchPlotTwists}
+                            className="w-full flex items-center justify-center gap-2 bg-rose-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-rose-700 transition-all duration-200"
+                        >
+                            <PlotTwistIcon />
+                            Genera Suggerimenti
+                        </button>
+                    </div>
                 )}
+                {error && <div className="mt-4 bg-red-900/50 border border-red-700 text-red-300 p-3 rounded-lg text-sm">{error}</div>}
             </div>
         </div>
       )}

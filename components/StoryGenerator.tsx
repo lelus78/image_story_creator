@@ -173,6 +173,7 @@ interface StoryGeneratorProps {
     highlightedText: string | null;
     image: string | null;
     imageFile: File | null;
+    anchorImage: string | null;
     genre: string;
     theme: string;
     characters: string;
@@ -181,6 +182,7 @@ interface StoryGeneratorProps {
     storyId: string | null;
     lastSaved: Date | null;
     onImageChange: (image: string | null, file: File | null) => void;
+    onAnchorImageChange: (image: string | null) => void;
     onGenreChange: (genre: string) => void;
     onThemeChange: (theme: string) => void;
     onCharactersChange: (characters: string) => void;
@@ -194,8 +196,8 @@ interface StoryGeneratorProps {
 const StoryGenerator: React.FC<StoryGeneratorProps> = (props) => {
   const { 
     storyParts, onStoryChange, isApplyingSuggestion, highlightedText,
-    image, imageFile, genre, theme, characters, location, selectedTitle, storyId, lastSaved,
-    onImageChange, onGenreChange, onThemeChange, onCharactersChange, onLocationChange, onTitleChange, onSave, onNewStory
+    image, imageFile, anchorImage, genre, theme, characters, location, selectedTitle, storyId, lastSaved,
+    onImageChange, onAnchorImageChange, onGenreChange, onThemeChange, onCharactersChange, onLocationChange, onTitleChange, onSave, onNewStory
   } = props;
   
   const [titles, setTitles] = useState<string[] | null>(null);
@@ -265,6 +267,7 @@ const StoryGenerator: React.FC<StoryGeneratorProps> = (props) => {
 
   const resetStoryState = () => {
     onStoryChange(null);
+    onAnchorImageChange(null);
     setError(null);
     handleStopPlayback();
     setGeneratedAudio(null);
@@ -635,9 +638,16 @@ const StoryGenerator: React.FC<StoryGeneratorProps> = (props) => {
             }
             const initialImageBase64 = image.split(',')[1];
             const initialImageMimeType = imageFile.type;
+            const anchorImageBase64 = anchorImage ? anchorImage.split(',')[1] : undefined;
 
             const paragraphText = storyParts[pIndex].chunks.map(c => c.text).join(' ');
-            const imageUrl = await generateImageForParagraph(paragraphText, initialImageBase64, initialImageMimeType, genre);
+            const imageUrl = await generateImageForParagraph(paragraphText, initialImageBase64, initialImageMimeType, genre, anchorImageBase64);
+            
+            // This is the first illustration, set it as the anchor.
+            if (!anchorImage) {
+                onAnchorImageChange(imageUrl);
+            }
+
             onStoryChange(prev => {
                 if (!prev) return null;
                 const newStoryParts = [...prev];
@@ -649,7 +659,7 @@ const StoryGenerator: React.FC<StoryGeneratorProps> = (props) => {
         } finally {
             setIsIllustrating(null);
         }
-    }, [storyParts, onStoryChange, image, imageFile, genre]);
+    }, [storyParts, onStoryChange, image, imageFile, genre, anchorImage, onAnchorImageChange]);
 
     const handleOpenPlotTwistModal = useCallback(() => {
         setPlotTwists(null);
@@ -685,13 +695,14 @@ const StoryGenerator: React.FC<StoryGeneratorProps> = (props) => {
             const currentStory = getFullStoryText();
             const newStoryParts = await applyPlotTwist(currentStory, twist);
             onStoryChange(newStoryParts);
+            onAnchorImageChange(null); // Plot twist invalidates the character anchor
             invalidateSecondaryContent(); // This resets audio and titles
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Impossibile applicare il colpo di scena.');
         } finally {
             setIsApplyingPlotTwist(false);
         }
-    }, [storyParts, getFullStoryText, onStoryChange]);
+    }, [storyParts, getFullStoryText, onStoryChange, onAnchorImageChange]);
 
 
   const isActionInProgress = isLoading || isAudioLoading || isDownloadingAudio || isExportingHtml || isAdvancing || isSuggestingTitles || regeneratingIndex !== null || regeneratingParagraph !== null || isRefining || isIllustrating !== null || isApplyingSuggestion || isApplyingPlotTwist;

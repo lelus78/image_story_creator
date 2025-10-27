@@ -32,6 +32,7 @@ export interface SavedStory {
     coverImage: string;
     coverImageFile: File;
     storyParts: StoryParagraph[];
+    anchorImage: string | null; // The first generated illustration to use as a character anchor
     genre: string;
     theme: string;
     characters: string;

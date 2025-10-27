@@ -16,6 +16,7 @@ const App: React.FC = () => {
   const [storyParts, setStoryParts] = useState<StoryParagraph[] | null>(null);
   const [initialImage, setInitialImage] = useState<string | null>(null);
   const [initialImageFile, setInitialImageFile] = useState<File | null>(null);
+  const [anchorImage, setAnchorImage] = useState<string | null>(null); // For character consistency
   const [genre, setGenre] = useState<string>('Fantasy');
   const [theme, setTheme] = useState<string>('');
   const [characters, setCharacters] = useState<string>('');
@@ -61,6 +62,7 @@ const App: React.FC = () => {
     try {
         const newStoryParts = await applySuggestionToStory(storyTextForChat, suggestion);
         setStoryParts(newStoryParts);
+        setAnchorImage(null); // Suggestions can change the story, invalidating the anchor
     } catch (err) {
         setError(err instanceof Error ? err.message : 'Impossibile applicare il suggerimento.');
     } finally {
@@ -80,6 +82,7 @@ const App: React.FC = () => {
         coverImage: initialImage,
         coverImageFile: initialImageFile,
         storyParts,
+        anchorImage,
         genre,
         theme,
         characters,
@@ -96,7 +99,7 @@ const App: React.FC = () => {
     } catch (err) {
         setError(err instanceof Error ? err.message : 'Errore durante il salvataggio della storia.');
     }
-  }, [storyParts, initialImage, initialImageFile, currentStoryId, selectedTitle, genre, theme, characters, location]);
+  }, [storyParts, initialImage, initialImageFile, anchorImage, currentStoryId, selectedTitle, genre, theme, characters, location]);
 
   const handleLoadStory = useCallback(async (storyId: string) => {
       const story = await getStoryFromStorage(storyId);
@@ -104,6 +107,7 @@ const App: React.FC = () => {
           setStoryParts(story.storyParts);
           setInitialImage(story.coverImage);
           setInitialImageFile(story.coverImageFile);
+          setAnchorImage(story.anchorImage || null);
           setGenre(story.genre);
           setTheme(story.theme);
           setCharacters(story.characters);
@@ -122,6 +126,7 @@ const App: React.FC = () => {
       setStoryParts(null);
       setInitialImage(null);
       setInitialImageFile(null);
+      setAnchorImage(null);
       setGenre('Fantasy');
       setTheme('');
       setCharacters('');
@@ -191,6 +196,7 @@ const App: React.FC = () => {
                         // Pass all story state and handlers
                         image={initialImage}
                         imageFile={initialImageFile}
+                        anchorImage={anchorImage}
                         genre={genre}
                         theme={theme}
                         characters={characters}
@@ -199,6 +205,7 @@ const App: React.FC = () => {
                         storyId={currentStoryId}
                         lastSaved={lastSaved}
                         onImageChange={(img, file) => { setInitialImage(img); setInitialImageFile(file); }}
+                        onAnchorImageChange={setAnchorImage}
                         onGenreChange={setGenre}
                         onThemeChange={setTheme}
                         onCharactersChange={setCharacters}

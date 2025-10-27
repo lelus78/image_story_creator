@@ -294,37 +294,62 @@ export const refineStory = async (currentStoryParts: StoryParagraph[], genre: st
 };
 
 export const generateImageForParagraph = async (
-  paragraphText: string,
-  initialImageBase64: string,
-  initialImageMimeType: string,
-  genre: string
+    paragraphText: string,
+    initialImageBase64: string,
+    initialImageMimeType: string,
+    genre: string,
+    anchorImageBase64?: string
 ): Promise<string> => {
     const ai = getGenAI();
-    
-    const imagePart = {
+
+    const parts = [];
+
+    const imagePartInitial = {
         inlineData: {
             data: initialImageBase64,
             mimeType: initialImageMimeType,
         },
     };
-    
-    let textPrompt: string;
+    parts.push(imagePartInitial);
 
-    if (genre === 'Per Bambini') {
-        textPrompt = `Crea una nuova illustrazione in uno stile da libro per bambini: colorato, fantastico e amichevole. Deve sembrare un disegno o un cartone animato. Ignora lo stile dell'immagine di riferimento e crea qualcosa di completamente nuovo basandoti su questa descrizione della scena: "${paragraphText}". Evita stili realistici, fotografici o spaventosi.`;
-    } else {
-        textPrompt = `Crea un'illustrazione che corrisponda allo stile artistico dell'immagine di riferimento. NON modificare l'immagine di riferimento. Genera una nuova immagine da zero basata su questa descrizione della scena: "${paragraphText}". Concentrati sui dettagli visivi, i colori e l'illuminazione. Sii creativo.`;
+    if (anchorImageBase64) {
+        const imagePartAnchor = {
+            inlineData: {
+                data: anchorImageBase64,
+                // Assuming anchor is always the same type as the generated images (PNG from the model)
+                mimeType: 'image/png', 
+            },
+        };
+        parts.push(imagePartAnchor);
     }
 
-    const textPart = { text: textPrompt };
+    let textPrompt: string;
+    const sceneDescription = `Genera una nuova immagine da zero basata su questa descrizione della scena: "${paragraphText}".`;
+
+    if (anchorImageBase64) {
+        const basePrompt = `Usa la prima immagine di riferimento per lo stile artistico generale. Usa la seconda immagine di riferimento (l'ancora del personaggio) per mantenere l'aspetto del personaggio principale coerente (stesso volto, vestiti, ecc.). ${sceneDescription}`;
+        if (genre === 'Per Bambini') {
+            textPrompt = `Crea un'illustrazione in stile libro per bambini: colorato, fantastico, amichevole, simile a un cartone animato. ${basePrompt} Evita stili realistici o spaventosi.`;
+        } else {
+            textPrompt = `Crea un'illustrazione che corrisponda allo stile generale della prima immagine. ${basePrompt} Concentrati sui dettagli visivi e l'illuminazione. Sii creativo.`;
+        }
+    } else {
+        // This is the first illustration generation, no anchor yet.
+        const basePrompt = `Usa l'immagine di riferimento per lo stile artistico. ${sceneDescription}`;
+        if (genre === 'Per Bambini') {
+            textPrompt = `Crea una nuova illustrazione in uno stile da libro per bambini: colorato, fantastico e amichevole. Deve sembrare un disegno o un cartone animato. Ignora lo stile dell'immagine di riferimento e crea qualcosa di completamente nuovo basandoti su questa descrizione della scena: "${paragraphText}". Evita stili realistici, fotografici o spaventosi.`;
+        } else {
+            textPrompt = `Crea un'illustrazione che corrisponda allo stile artistico dell'immagine di riferimento. NON modificare l'immagine di riferimento. ${basePrompt} Concentrati sui dettagli visivi, i colori e l'illuminazione. Sii creativo.`;
+        }
+    }
+    parts.push({ text: textPrompt });
+
 
     const MAX_RETRIES = 2; // Total 3 attempts
     for (let i = 0; i <= MAX_RETRIES; i++) {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-image',
-            contents: {
-                parts: [imagePart, textPart],
-            },
+            contents: { parts },
             config: {
                 responseModalities: [Modality.IMAGE],
             },
@@ -413,7 +438,7 @@ export const applyPlotTwist = async (
     plotTwist: string
 ): Promise<StoryParagraph[]> => {
     const ai = getGenAI();
-    const prompt = `Ecco una storia in italiano:\n\n---\n${currentStory}\n---\n\nIl tuo compito è integrare in modo profondo e coerente il seguente colpo di scena nella storia: "${plotTwist}".\n\nNON limitarti ad aggiungere un paragrafo alla fine. Riscrivi l'INTERA storia per incorporare questo colpo di scena in modo naturale. Questo potrebbe richiedere:\n1. Modificare frasi o dettagli nei paragrafi esistenti per creare prefigurazione (foreshadowing) o per allineare i fatti al nuovo colpo di scena.\n2. Riscrivere intere sezioni per cambiare le motivazioni o le azioni dei personaggi.\n3. Aggiungere uno o più nuovi paragrafi, se necessario, per sviluppare il colpo di scena.\n\nL'obiettivo è una narrazione unificata e coerente in cui il colpo di scena sembri intenzionale fin dall'inizio.\n\nRestituisci un oggetto JSON con una chiave "story". Il valore di "story" deve essere un array di oggetti, dove ogni oggetto rappresenta un paragrafo e ha una chiave "chunks" che è un array di oggetti. Ogni oggetto chunk deve avere una chiave "text" (stringa) e una chiave "changed" (booleano, 'true' se il testo è nuovo o è stato modificato in modo significativo, altrimenti 'false'). Mantieni la coerenza. Non aggiungere commenti. Restituisci solo l'oggetto JSON.`;
+    const prompt = `Ecco una storia in italiano:\n\n---\n${currentStory}\n---\n\nIl tuo compito è integrare in modo profondo e coerente il seguente colpo di scena nella storia: "${plotTwist}".\n\nNON limitarti ad aggiungere un paragrafo alla fine. Riscrivi l'INTERA storia per incorporare questo colpo di scena in modo naturale. Questo potrebbe richiedere:\n1. Modificare frasi o dettagli nei paragrafi esistenti per creare prefigurazione (foreshadowing) o per allineare i fatti al nuovo colpo di scena.\n2. Riscrivere intere sezioni per cambiare le motivazioni o le azioni dei personaggi.\n3. Aggiungere uno o più nuovi paragrafi, se necessario, per sviluppare il colpo di scena.\n\nL'obiettivo è una narrazione unificata e coerente in cui il colpo di scena sembri intenzionale fin dall'inizio.\n\nRestituisci un oggetto JSON con una chiave "story". Il valore di "story" deve essere un array di oggetti, where ogni oggetto rappresenta un paragrafo e ha una chiave "chunks" che è un array di oggetti. Ogni oggetto chunk deve avere una chiave "text" (stringa) e una chiave "changed" (booleano, 'true' se il testo è nuovo o è stato modificato in modo significativo, altrimenti 'false'). Mantieni la coerenza. Non aggiungere commenti. Restituisci solo l'oggetto JSON.`;
 
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-pro', // Use a more powerful model for rewriting

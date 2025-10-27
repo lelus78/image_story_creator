@@ -25,3 +25,18 @@ export interface ChatResponse {
     responseText: string;
     actionableSuggestions?: ActionableSuggestion[];
 }
+
+export interface SavedStory {
+    id: string;
+    title: string;
+    coverImage: string;
+    coverImageFile: File;
+    storyParts: StoryParagraph[];
+    genre: string;
+    theme: string;
+    characters: string;
+    location: string;
+    lastModified: string; // ISO string date
+    isRefined: boolean;
+    illustrationCount: number;
+}

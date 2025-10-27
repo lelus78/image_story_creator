@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { generateStoryFromImage, textToSpeech, continueStory, suggestTitles, concludeStory, regenerateChunk, regenerateParagraph, refineStory, generateImageForParagraph, suggestActionablePlotTwists, applyPlotTwist } from '../services/geminiService';
-import { UploadIcon, SparklesIcon, SpeakerIcon, LoadingSpinner, DownloadIcon, HtmlIcon, ContinueIcon, TitleIcon, ConcludeIcon, RegenerateIcon, HintIcon, PlayIcon, PauseIcon, StopIcon, CancelIcon, RefineIcon, IllustrateIcon, PlotTwistIcon, CloseIcon, ApplySuggestionIcon } from './icons/FeatureIcons';
+import { UploadIcon, SparklesIcon, SpeakerIcon, LoadingSpinner, DownloadIcon, HtmlIcon, ContinueIcon, TitleIcon, ConcludeIcon, RegenerateIcon, HintIcon, PlayIcon, PauseIcon, StopIcon, CancelIcon, RefineIcon, IllustrateIcon, PlotTwistIcon, CloseIcon, SaveIcon, NewStoryIcon } from './icons/FeatureIcons';
 import { StoryParagraph, StoryChunk } from '../types';
 
 // Audio decoding utilities
@@ -159,22 +159,37 @@ const getThemeCss = (genre: string): string => {
 
 interface StoryGeneratorProps {
     storyParts: StoryParagraph[] | null;
-    // FIX: Update onStoryChange to accept a state updater function.
     onStoryChange: React.Dispatch<React.SetStateAction<StoryParagraph[] | null>>;
     isApplyingSuggestion: boolean;
     highlightedText: string | null;
+    image: string | null;
+    imageFile: File | null;
+    genre: string;
+    theme: string;
+    characters: string;
+    location: string;
+    selectedTitle: string | null;
+    storyId: string | null;
+    lastSaved: Date | null;
+    onImageChange: (image: string | null, file: File | null) => void;
+    onGenreChange: (genre: string) => void;
+    onThemeChange: (theme: string) => void;
+    onCharactersChange: (characters: string) => void;
+    onLocationChange: (location: string) => void;
+    onTitleChange: (title: string | null) => void;
+    onSave: () => void;
+    onNewStory: () => void;
 }
 
 
-const StoryGenerator: React.FC<StoryGeneratorProps> = ({ storyParts, onStoryChange, isApplyingSuggestion, highlightedText }) => {
-  const [image, setImage] = useState<string | null>(null);
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [theme, setTheme] = useState<string>('');
-  const [characters, setCharacters] = useState<string>('');
-  const [location, setLocation] = useState<string>('');
-  const [genre, setGenre] = useState<string>('Fantasy');
+const StoryGenerator: React.FC<StoryGeneratorProps> = (props) => {
+  const { 
+    storyParts, onStoryChange, isApplyingSuggestion, highlightedText,
+    image, imageFile, genre, theme, characters, location, selectedTitle, storyId, lastSaved,
+    onImageChange, onGenreChange, onThemeChange, onCharactersChange, onLocationChange, onTitleChange, onSave, onNewStory
+  } = props;
+  
   const [titles, setTitles] = useState<string[] | null>(null);
-  const [selectedTitle, setSelectedTitle] = useState<string | null>(null);
   
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isExportingHtml, setIsExportingHtml] = useState<boolean>(false);
@@ -246,16 +261,15 @@ const StoryGenerator: React.FC<StoryGeneratorProps> = ({ storyParts, onStoryChan
     setGeneratedAudio(null);
     audioBufferRef.current = null;
     setTitles(null);
-    setSelectedTitle(null);
+    onTitleChange(null);
   };
 
   const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      setImageFile(file);
       const reader = new FileReader();
       reader.onloadend = () => {
-        setImage(reader.result as string);
+        onImageChange(reader.result as string, file);
         resetStoryState();
       };
       reader.readAsDataURL(file);
@@ -282,60 +296,48 @@ const StoryGenerator: React.FC<StoryGeneratorProps> = ({ storyParts, onStoryChan
     resetStoryState();
 
     try {
-      const reader = new FileReader();
-      reader.readAsDataURL(imageFile);
-      reader.onloadend = async () => {
-        try {
-            if (controller.signal.aborted) return;
-            const base64Data = (reader.result as string).split(',')[1];
-            // FIX: handle the StoryChunk[] returned by the service directly.
-            const generatedParagraph = await generateStoryFromImage(base64Data, imageFile.type, genre, theme, characters, location);
-            if (controller.signal.aborted) return;
-            onStoryChange([{ chunks: generatedParagraph, image: null }]);
-        } catch (err) {
-            if (!controller.signal.aborted) {
-                setError(err instanceof Error ? err.message : 'Si è verificato un errore sconosciuto.');
-            }
-        } finally {
-             if (generationAbortControllerRef.current === controller) {
-                setIsLoading(false);
-                generationAbortControllerRef.current = null;
-            }
-        }
-      };
-    // FIX: Correct 'catch' block syntax. `catch (err) =>` is invalid.
+        if (controller.signal.aborted) return;
+        const base64Data = (image as string).split(',')[1];
+        const generatedParagraph = await generateStoryFromImage(base64Data, imageFile.type, genre, theme, characters, location);
+        if (controller.signal.aborted) return;
+        onStoryChange([{ chunks: generatedParagraph, image: null }]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Si è verificato un errore sconosciuto.');
-      setIsLoading(false);
-      generationAbortControllerRef.current = null;
+        if (!controller.signal.aborted) {
+            setError(err instanceof Error ? err.message : 'Si è verificato un errore sconosciuto.');
+        }
+    } finally {
+         if (generationAbortControllerRef.current === controller) {
+            setIsLoading(false);
+            generationAbortControllerRef.current = null;
+        }
     }
-  }, [imageFile, theme, genre, characters, location, onStoryChange]);
+  }, [image, imageFile, theme, genre, characters, location, onStoryChange]);
   
   const invalidateSecondaryContent = () => {
     handleStopPlayback();
     setGeneratedAudio(null);
     audioBufferRef.current = null;
     setTitles(null);
-    setSelectedTitle(null);
+    onTitleChange(null);
   };
 
   const fetchAndSetTitles = useCallback(async (storyText: string) => {
     setIsSuggestingTitles(true);
     setTitles(null);
-    setSelectedTitle(null);
+    onTitleChange(null);
     setError(null);
     try {
         const suggestedTitles = await suggestTitles(storyText);
         setTitles(suggestedTitles);
         if (suggestedTitles && suggestedTitles.length > 0) {
-            setSelectedTitle(suggestedTitles[0]);
+            onTitleChange(suggestedTitles[0]);
         }
     } catch (err) {
         setError(err instanceof Error ? err.message : 'Si è verificato un errore durante il suggerimento dei titoli.');
     } finally {
         setIsSuggestingTitles(false);
     }
-  }, []);
+  }, [onTitleChange]);
 
   const handleAdvanceStory = useCallback(async () => {
     if (!storyParts || storyParts.length === 0) return;
@@ -708,12 +710,19 @@ const StoryGenerator: React.FC<StoryGeneratorProps> = ({ storyParts, onStoryChan
           <input id="image-upload" type="file" className="hidden" accept="image/*" onChange={handleImageChange} />
         </div>
         <div className="flex-1 flex flex-col justify-center">
-          <h2 className="text-2xl font-semibold mb-4 text-indigo-300">La Tela della Tua Storia</h2>
+          <div className="flex justify-between items-center mb-4">
+             <h2 className="text-2xl font-semibold text-indigo-300">La Tela della Tua Storia</h2>
+             <button onClick={onNewStory} className="flex items-center gap-2 text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 font-semibold py-2 px-3 rounded-lg transition-colors">
+                <NewStoryIcon />
+                Nuova Storia
+             </button>
+          </div>
+          
           <p className="text-gray-400 mb-4">Carica un'immagine, definisci i dettagli e lascia che l'IA crei un incipit avvincente.</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
              <div>
                 <label htmlFor="story-genre" className="block text-sm font-medium text-gray-300 mb-2">Genere</label>
-                <select id="story-genre" value={genre} onChange={(e) => setGenre(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-shadow">
+                <select id="story-genre" value={genre} onChange={(e) => onGenreChange(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-shadow">
                     <option value="Fantasy">Fantasy</option>
                     <option value="Sci-Fi">Fantascienza</option>
                     <option value="Horror">Horror</option>
@@ -726,15 +735,15 @@ const StoryGenerator: React.FC<StoryGeneratorProps> = ({ storyParts, onStoryChan
             </div>
             <div>
                 <label htmlFor="story-theme" className="block text-sm font-medium text-gray-300 mb-2">Tema (opzionale)</label>
-                <input id="story-theme" type="text" value={theme} onChange={(e) => setTheme(e.target.value)} placeholder="es. un artefatto perduto" className="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-shadow"/>
+                <input id="story-theme" type="text" value={theme} onChange={(e) => onThemeChange(e.target.value)} placeholder="es. un artefatto perduto" className="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-shadow"/>
             </div>
             <div>
                 <label htmlFor="story-characters" className="block text-sm font-medium text-gray-300 mb-2">Personaggi (opzionale)</label>
-                <input id="story-characters" type="text" value={characters} onChange={(e) => setCharacters(e.target.value)} placeholder="es. Elara, la ladra astuta" className="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-shadow"/>
+                <input id="story-characters" type="text" value={characters} onChange={(e) => onCharactersChange(e.target.value)} placeholder="es. Elara, la ladra astuta" className="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-shadow"/>
             </div>
             <div>
                 <label htmlFor="story-location" className="block text-sm font-medium text-gray-300 mb-2">Luogo (opzionale)</label>
-                <input id="story-location" type="text" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="es. La città sommersa di Aethel" className="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-shadow"/>
+                <input id="story-location" type="text" value={location} onChange={(e) => onLocationChange(e.target.value)} placeholder="es. La città sommersa di Aethel" className="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-shadow"/>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -937,7 +946,7 @@ const StoryGenerator: React.FC<StoryGeneratorProps> = ({ storyParts, onStoryChan
                     {titles.map((title, index) => (
                         <li key={index}>
                             <button 
-                                onClick={() => setSelectedTitle(title)}
+                                onClick={() => onTitleChange(title)}
                                 className={`w-full text-left p-2 rounded-md transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-indigo-400 ${
                                     selectedTitle === title 
                                     ? 'bg-indigo-600 text-white' 
@@ -952,53 +961,71 @@ const StoryGenerator: React.FC<StoryGeneratorProps> = ({ storyParts, onStoryChan
             </div>
           )}
 
-          <div className="mt-6 flex flex-wrap gap-4 justify-end">
-             <button onClick={handleOpenPlotTwistModal} disabled={isActionInProgress || playbackState !== 'stopped'} className="inline-flex items-center gap-2 bg-rose-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-rose-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed">
-              <PlotTwistIcon />
-              Colpo di Scena
-            </button>
-            <button onClick={handleSuggestTitles} disabled={isActionInProgress || playbackState !== 'stopped'} className="inline-flex items-center gap-2 bg-teal-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-teal-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed">
-              {isSuggestingTitles ? <LoadingSpinner /> : <TitleIcon />}
-              {isSuggestingTitles ? 'Suggerisco...' : (selectedTitle ? 'Altri Titoli' : 'Suggerisci Titoli')}
-            </button>
-            {!isConcluded && (
-                 <button onClick={handleAdvanceStory} disabled={isActionInProgress || playbackState !== 'stopped'} className="inline-flex items-center gap-2 bg-teal-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-teal-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed">
-                    {isAdvancing ? <LoadingSpinner /> : (storyParts.length < 2 ? <ContinueIcon /> : <ConcludeIcon />)}
-                    {isAdvancing ? (storyParts.length < 2 ? 'Continuo...' : 'Concludo...') : (storyParts.length < 2 ? 'Continua Storia' : 'Concludi Storia')}
+          <div className="mt-6 flex flex-wrap gap-4 items-end justify-between border-t border-gray-700 pt-6">
+            <div className="flex items-center gap-4">
+                <button onClick={onSave} disabled={isActionInProgress} className="inline-flex items-center gap-2 bg-gray-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-gray-700 transition-colors duration-200 disabled:bg-gray-500 disabled:cursor-not-allowed text-sm">
+                  <SaveIcon />
+                  {storyId ? 'Aggiorna' : 'Salva'}
                 </button>
-            )}
-            {isConcluded && (
-                <button onClick={handleRefineStory} disabled={isActionInProgress || playbackState !== 'stopped'} className="inline-flex items-center gap-2 bg-yellow-500 text-white font-bold py-2 px-5 rounded-lg hover:bg-yellow-600 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed">
-                  {isRefining ? <LoadingSpinner /> : <RefineIcon />}
-                  {isRefining ? 'Affinando...' : 'Affina Storia'}
-                </button>
-            )}
-            
-            <button onClick={handlePlaybackControls} disabled={isActionInProgress || isAudioLoading} className="inline-flex items-center gap-2 bg-green-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-green-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed">
-              {isAudioLoading ? <LoadingSpinner /> : (playbackState === 'playing' ? <PauseIcon /> : (playbackState === 'paused' ? <PlayIcon /> : <SpeakerIcon />) )}
-              {isAudioLoading ? 'Caricamento...' : (playbackState === 'playing' ? 'Pausa' : (playbackState === 'paused' ? 'Riprendi' : 'Leggi ad Alta Voce'))}
-            </button>
-            {playbackState !== 'stopped' && (
-                 <button onClick={handleStopPlayback} className="inline-flex items-center gap-2 bg-red-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-red-700 transition-colors duration-200">
-                    <StopIcon />
-                    Stop
-                </button>
-            )}
+                {lastSaved && <span className="text-xs text-gray-400">Salvato: {lastSaved.toLocaleTimeString()}</span>}
+            </div>
 
-            <button onClick={handleDownloadAudio} disabled={isActionInProgress || playbackState !== 'stopped'} className="inline-flex items-center gap-2 bg-sky-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-sky-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed">
-              {isDownloadingAudio ? <LoadingSpinner /> : <DownloadIcon />}
-              {isDownloadingAudio ? 'Preparo...' : 'Scarica Audio'}
-            </button>
-            <button onClick={handleExportHtml} disabled={isActionInProgress || playbackState !== 'stopped'} className="inline-flex items-center gap-2 bg-purple-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-purple-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed">
-              {isExportingHtml ? <LoadingSpinner /> : <HtmlIcon />}
-              {isExportingHtml ? 'Esporto...' : 'Esporta HTML'}
-            </button>
+            <div className="flex flex-wrap items-end gap-x-6 gap-y-4">
+                 {/* STORY PROGRESSION */}
+                {!isConcluded && (
+                    <button onClick={handleAdvanceStory} disabled={isActionInProgress || playbackState !== 'stopped'} className="inline-flex items-center justify-center gap-2 bg-teal-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-teal-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed transform hover:scale-105">
+                        {isAdvancing ? <LoadingSpinner /> : (storyParts.length < 2 ? <ContinueIcon /> : <ConcludeIcon />)}
+                        {isAdvancing ? (storyParts.length < 2 ? 'Continuo...' : 'Concludo...') : (storyParts.length < 2 ? 'Continua Storia' : 'Concludi Storia')}
+                    </button>
+                )}
+                 {/* CREATIVE TOOLS */}
+                <fieldset className="border border-gray-600 rounded-lg p-2">
+                    <legend className="text-xs font-semibold text-gray-400 px-1">Strumenti Creativi</legend>
+                    <div className="flex items-center gap-2">
+                        {isConcluded && (
+                            <button onClick={handleRefineStory} disabled={isActionInProgress || playbackState !== 'stopped'} className="inline-flex items-center gap-2 bg-yellow-500 text-black font-bold py-2 px-4 rounded-lg hover:bg-yellow-600 transition-colors duration-200 disabled:bg-gray-600 disabled:text-white disabled:cursor-not-allowed">
+                              {isRefining ? <LoadingSpinner /> : <RefineIcon />}
+                              Affina
+                            </button>
+                        )}
+                         <button onClick={handleOpenPlotTwistModal} disabled={isActionInProgress || playbackState !== 'stopped'} className="inline-flex items-center gap-2 bg-rose-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-rose-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed">
+                          <PlotTwistIcon />
+                          Colpo di Scena
+                        </button>
+                        <button onClick={handleSuggestTitles} disabled={isActionInProgress || playbackState !== 'stopped'} className="inline-flex items-center gap-2 bg-sky-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-sky-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed">
+                          {isSuggestingTitles ? <LoadingSpinner /> : <TitleIcon />}
+                          Titoli
+                        </button>
+                    </div>
+                </fieldset>
+                
+                 {/* EXPORT & LISTEN */}
+                <fieldset className="border border-gray-600 rounded-lg p-2">
+                    <legend className="text-xs font-semibold text-gray-400 px-1">Esporta & Ascolta</legend>
+                    <div className="flex items-center gap-2">
+                        <button onClick={handlePlaybackControls} disabled={isActionInProgress || isAudioLoading} className="inline-flex items-center gap-2 bg-green-600 text-white font-bold p-2 rounded-lg hover:bg-green-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed">
+                          {isAudioLoading ? <LoadingSpinner /> : (playbackState === 'playing' ? <PauseIcon /> : (playbackState === 'paused' ? <PlayIcon /> : <SpeakerIcon />) )}
+                        </button>
+                        {playbackState !== 'stopped' && (
+                             <button onClick={handleStopPlayback} className="inline-flex items-center gap-2 bg-red-600 text-white font-bold p-2 rounded-lg hover:bg-red-700 transition-colors duration-200">
+                                <StopIcon />
+                            </button>
+                        )}
+                        <button onClick={handleDownloadAudio} disabled={isActionInProgress || playbackState !== 'stopped'} className="inline-flex items-center gap-2 bg-gray-200 text-gray-800 font-bold p-2 rounded-lg hover:bg-white transition-colors duration-200 disabled:bg-gray-600 disabled:text-gray-400 disabled:cursor-not-allowed">
+                          {isDownloadingAudio ? <LoadingSpinner /> : <DownloadIcon />}
+                        </button>
+                        <button onClick={handleExportHtml} disabled={isActionInProgress || playbackState !== 'stopped'} className="inline-flex items-center gap-2 bg-gray-200 text-gray-800 font-bold p-2 rounded-lg hover:bg-white transition-colors duration-200 disabled:bg-gray-600 disabled:text-gray-400 disabled:cursor-not-allowed">
+                          {isExportingHtml ? <LoadingSpinner /> : <HtmlIcon />}
+                        </button>
+                    </div>
+                </fieldset>
+            </div>
           </div>
         </div>
       )}
       {plotTwistModalOpen && (
-        <div className="fixed inset-0 bg-black/60 z-40 flex items-center justify-center p-4 animate-fade-in" onClick={() => setPlotTwistModalOpen(false)}>
-            <div className="bg-gray-800 border border-gray-700 rounded-xl shadow-2xl p-6 w-full max-w-2xl relative" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-40 flex items-start justify-center p-4 pt-20" onClick={() => setPlotTwistModalOpen(false)}>
+            <div className="bg-gray-800 border border-gray-700 rounded-xl shadow-2xl p-6 w-full max-w-2xl relative animate-modal-enter" onClick={e => e.stopPropagation()}>
                 <button onClick={() => setPlotTwistModalOpen(false)} className="absolute top-3 right-3 text-gray-400 hover:text-white">
                     <CloseIcon />
                 </button>

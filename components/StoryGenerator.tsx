@@ -296,6 +296,24 @@ const StoryGenerator: React.FC = () => {
     setSelectedTitle(null);
   };
 
+  const fetchAndSetTitles = useCallback(async (storyText: string) => {
+    setIsSuggestingTitles(true);
+    setTitles(null);
+    setSelectedTitle(null);
+    setError(null);
+    try {
+        const suggestedTitles = await suggestTitles(storyText);
+        setTitles(suggestedTitles);
+        if (suggestedTitles && suggestedTitles.length > 0) {
+            setSelectedTitle(suggestedTitles[0]);
+        }
+    } catch (err) {
+        setError(err instanceof Error ? err.message : 'Si è verificato un errore durante il suggerimento dei titoli.');
+    } finally {
+        setIsSuggestingTitles(false);
+    }
+  }, []);
+
   const handleAdvanceStory = useCallback(async () => {
     if (!storyParts || storyParts.length === 0) return;
 
@@ -303,23 +321,33 @@ const StoryGenerator: React.FC = () => {
     setError(null);
     try {
         const currentStory = getFullStoryText();
+        const isConcluding = storyParts.length === 2;
         let nextParagraph: string[];
 
-        if (storyParts.length === 1) {
-            nextParagraph = await continueStory(currentStory, genre);
-        } else {
+        if (isConcluding) {
             nextParagraph = await concludeStory(currentStory, genre);
+        } else {
+            nextParagraph = await continueStory(currentStory, genre);
         }
         
-        setStoryParts(prevStory => [...(prevStory || []), nextParagraph]);
-        invalidateSecondaryContent();
+        const newStoryParts = [...(storyParts || []), nextParagraph];
+        setStoryParts(newStoryParts);
+        // Invalidate everything except titles, which will be auto-generated
+        handleStopPlayback();
+        setGeneratedAudio(null);
+        audioBufferRef.current = null;
+
+        if (isConcluding) {
+            const finalStoryText = newStoryParts.map(p => p.join(' ')).join('\n\n');
+            await fetchAndSetTitles(finalStoryText);
+        }
 
     } catch (err) {
         setError(err instanceof Error ? err.message : `Impossibile far avanzare la storia.`);
     } finally {
         setIsAdvancing(false);
     }
-  }, [storyParts, getFullStoryText, genre]);
+  }, [storyParts, getFullStoryText, genre, fetchAndSetTitles]);
 
  const handleRegenerateChunk = useCallback(async (pIndex: number, cIndex: number, hint?: string) => {
     if (!storyParts) return;
@@ -385,21 +413,9 @@ const StoryGenerator: React.FC = () => {
 
   const handleSuggestTitles = useCallback(async () => {
     if (!storyParts) return;
-
-    setIsSuggestingTitles(true);
-    setTitles(null);
-    setSelectedTitle(null);
-    setError(null);
-    try {
-        const fullStory = getFullStoryText();
-        const suggestedTitles = await suggestTitles(fullStory);
-        setTitles(suggestedTitles);
-    } catch (err) {
-        setError(err instanceof Error ? err.message : 'Si è verificato un errore durante il suggerimento dei titoli.');
-    } finally {
-        setIsSuggestingTitles(false);
-    }
-  }, [storyParts, getFullStoryText]);
+    const fullStory = getFullStoryText();
+    await fetchAndSetTitles(fullStory);
+  }, [storyParts, getFullStoryText, fetchAndSetTitles]);
 
   const handleRefineStory = useCallback(async () => {
     if (!storyParts) return;
@@ -412,7 +428,10 @@ const StoryGenerator: React.FC = () => {
         
         if (refinedStoryParts && refinedStoryParts.length > 0) {
             setStoryParts(refinedStoryParts);
-            invalidateSecondaryContent();
+            // Invalidate only audio content, not titles.
+            handleStopPlayback();
+            setGeneratedAudio(null);
+            audioBufferRef.current = null;
         } else {
             throw new Error("L'IA ha restituito una storia vuota. Riprova.");
         }
@@ -422,7 +441,7 @@ const StoryGenerator: React.FC = () => {
     } finally {
         setIsRefining(false);
     }
-  }, [storyParts, getFullStoryText]);
+  }, [storyParts, getFullStoryText, handleStopPlayback]);
 
   const getOrGenerateAudio = useCallback(async (): Promise<string> => {
     if (generatedAudio) {
@@ -784,7 +803,7 @@ const StoryGenerator: React.FC = () => {
           <div className="mt-6 flex flex-wrap gap-4 justify-end">
             <button onClick={handleSuggestTitles} disabled={isActionInProgress || playbackState !== 'stopped'} className="inline-flex items-center gap-2 bg-teal-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-teal-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed">
               {isSuggestingTitles ? <LoadingSpinner /> : <TitleIcon />}
-              {isSuggestingTitles ? 'Suggerisco...' : 'Suggerisci Titoli'}
+              {isSuggestingTitles ? 'Suggerisco...' : (selectedTitle ? 'Altri Titoli' : 'Suggerisci Titoli')}
             </button>
             {!isConcluded && (
                  <button onClick={handleAdvanceStory} disabled={isActionInProgress || playbackState !== 'stopped'} className="inline-flex items-center gap-2 bg-teal-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-teal-700 transition-colors duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed">

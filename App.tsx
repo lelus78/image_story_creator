@@ -6,13 +6,13 @@ import { StoryParagraph } from './types';
 import { applySuggestionToStory } from './services/geminiService';
 
 const App: React.FC = () => {
-  const [isChatVisible, setIsChatVisible] = useState<boolean>(false);
+  const [isChatVisible, setIsChatVisible] = useState<boolean>(true);
   const [storyParts, setStoryParts] = useState<StoryParagraph[] | null>(null);
   const [isApplyingSuggestion, setIsApplyingSuggestion] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [highlightedText, setHighlightedText] = useState<string | null>(null);
 
-  const chatButtonClasses = `flex items-center gap-2 px-4 py-2 rounded-md transition-all duration-300 transform hover:scale-105 ${
+  const chatButtonClasses = `lg:hidden flex items-center gap-2 px-4 py-2 rounded-md transition-all duration-300 transform hover:scale-105 ${
       isChatVisible
         ? 'bg-indigo-600 text-white shadow-lg'
         : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
@@ -56,9 +56,9 @@ const App: React.FC = () => {
   }, [storyTextForChat]);
 
   return (
-    <div className="min-h-screen bg-gray-900 text-gray-100 flex flex-col items-center p-4 sm:p-6 md:p-8">
-      <div className="w-full max-w-7xl mx-auto">
-        <header className="text-center mb-8">
+    <div className="min-h-screen lg:h-screen bg-gray-900 text-gray-100 flex flex-col p-4 sm:p-6 md:p-8 lg:overflow-hidden">
+      <div className="w-full max-w-7xl mx-auto flex flex-col flex-1 h-full">
+        <header className="text-center mb-6">
           <h1 className="text-4xl sm:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-indigo-500">
             Cantastorie AI: Scrittura & Narrazione
           </h1>
@@ -67,7 +67,7 @@ const App: React.FC = () => {
           </p>
         </header>
 
-        <div className="flex justify-center mb-8">
+        <div className="flex justify-center mb-6">
             <button
               onClick={() => setIsChatVisible(!isChatVisible)}
               className={chatButtonClasses}
@@ -84,9 +84,9 @@ const App: React.FC = () => {
         )}
         {error && <div className="mb-4 bg-red-900/50 border border-red-700 text-red-300 p-4 rounded-lg text-center">{error}</div>}
         
-        <main className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className={`transition-all duration-500 ease-in-out ${isChatVisible ? 'lg:col-span-2' : 'lg:col-span-3'}`}>
-             <div className="bg-gray-800/50 rounded-xl shadow-2xl p-4 sm:p-6 md:p-8 border border-gray-700 backdrop-blur-sm h-full">
+        <main className="grid grid-cols-1 lg:grid-cols-3 gap-8 flex-1 lg:overflow-hidden">
+          <div className={`transition-all duration-500 ease-in-out ${isChatVisible ? 'lg:col-span-2' : 'lg:col-span-3'} lg:overflow-y-auto lg:pr-4`}>
+             <div className="bg-gray-800/50 rounded-xl shadow-2xl p-4 sm:p-6 md:p-8 border border-gray-700 backdrop-blur-sm min-h-[50vh] lg:h-full">
                 <StoryGenerator 
                     storyParts={storyParts}
                     onStoryChange={setStoryParts}
@@ -96,7 +96,7 @@ const App: React.FC = () => {
             </div>
           </div>
           
-          <div className={`${isChatVisible ? 'block' : 'hidden'} lg:block lg:col-span-1 ${!isChatVisible ? 'lg:hidden' : ''}`}>
+          <div className={`${isChatVisible ? 'block' : 'hidden'} lg:block lg:col-span-1 ${!isChatVisible ? 'lg:hidden' : ''} flex flex-col`}>
             <div className="bg-gray-800/50 rounded-xl shadow-2xl p-4 sm:p-6 md:p-8 border border-gray-700 backdrop-blur-sm h-full flex flex-col">
                 <h2 className="text-2xl font-semibold mb-1 text-indigo-300">AI Writing Coach</h2>
                 <p className="text-sm text-gray-400 mb-4">L'assistente conosce la tua storia. Chiedigli consigli!</p>

@@ -280,46 +280,57 @@ export const generateImageForParagraph = async (
     };
     
     const textPart = {
-        text: `Sei un illustratore. Il tuo compito è creare un'immagine basata su una descrizione testuale. Devi abbinare lo stile artistico di un'immagine di riferimento che ti viene fornita. Non modificare l'immagine di riferimento. Crea una nuova illustrazione da zero.\n\nDescrizione della scena: "${paragraphText}"`,
+        text: `Crea un'illustrazione che corrisponda allo stile artistico dell'immagine di riferimento. NON modificare l'immagine di riferimento. Genera una nuova immagine da zero basata su questa descrizione della scena: "${paragraphText}". Concentrati sui dettagli visivi, i colori e l'illuminazione. Sii creativo.`,
     };
 
-    const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image',
-        contents: {
-            parts: [imagePart, textPart],
-        },
-        config: {
-            responseModalities: [Modality.IMAGE],
-        },
-    });
+    const MAX_RETRIES = 2; // Total 3 attempts
+    for (let i = 0; i <= MAX_RETRIES; i++) {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash-image',
+            contents: {
+                parts: [imagePart, textPart],
+            },
+            config: {
+                responseModalities: [Modality.IMAGE],
+            },
+        });
 
-    const part = response.candidates?.[0]?.content?.parts?.[0];
-    if (part?.inlineData?.data) {
-        const base64ImageBytes: string = part.inlineData.data;
-        return `data:${part.inlineData.mimeType};base64,${base64ImageBytes}`;
-    }
-    
-    // If we reach here, image generation failed. Provide a more detailed error.
-    let errorMessage = "Generazione immagine fallita. La risposta non conteneva dati immagine.";
-    
-    if (response.text) {
-         errorMessage = `L'API ha restituito un messaggio di testo invece di un'immagine: "${response.text}"`;
-    } else if (response.candidates?.[0]?.finishReason && response.candidates[0].finishReason !== 'STOP') {
-        const finishReason = response.candidates[0].finishReason;
-        errorMessage += ` Motivo del fallimento: ${finishReason}.`;
-
-        if (finishReason === 'NO_IMAGE') {
-            errorMessage += ` L'IA non è riuscita a creare un'immagine basata su questo paragrafo. Prova a rigenerare il testo del paragrafo o a renderlo più descrittivo.`
+        const part = response.candidates?.[0]?.content?.parts?.[0];
+        if (part?.inlineData?.data) {
+            const base64ImageBytes: string = part.inlineData.data;
+            return `data:${part.inlineData.mimeType};base64,${base64ImageBytes}`;
+        }
+        
+        const finishReason = response.candidates?.[0]?.finishReason;
+        if (finishReason === 'NO_IMAGE' && i < MAX_RETRIES) {
+            console.warn(`Image generation failed with NO_IMAGE. Retrying (${i + 1}/${MAX_RETRIES})...`);
+            await new Promise(resolve => setTimeout(resolve, 500)); // Small delay before retry
+            continue;
         }
 
-        const safetyRatings = response.candidates[0].safetyRatings;
-        if (safetyRatings && safetyRatings.some(r => r.probability !== 'NEGLIGIBLE' && r.probability !== 'LOW')) {
-             errorMessage += ` Questo è probabilmente dovuto ai filtri di sicurezza.`;
-        }
-    }
+        // If we reach here, it's a non-retryable error or the last retry failed.
+        let errorMessage = "Generazione immagine fallita. La risposta non conteneva dati immagine.";
+        
+        if (response.text) {
+             errorMessage = `L'API ha restituito un messaggio di testo invece di un'immagine: "${response.text}"`;
+        } else if (finishReason && finishReason !== 'STOP') {
+            errorMessage += ` Motivo del fallimento: ${finishReason}.`;
 
-    console.error("Image generation failed. Full API response:", JSON.stringify(response, null, 2));
-    throw new Error(errorMessage);
+            if (finishReason === 'NO_IMAGE') {
+                errorMessage += ` L'IA non è riuscita a creare un'immagine basata su questo paragrafo dopo diversi tentativi. Prova a rigenerare il testo del paragrafo o a renderlo più descrittivo.`
+            }
+
+            const safetyRatings = response.candidates[0].safetyRatings;
+            if (safetyRatings && safetyRatings.some(r => r.probability !== 'NEGLIGIBLE' && r.probability !== 'LOW')) {
+                 errorMessage += ` Questo è probabilmente dovuto ai filtri di sicurezza.`;
+            }
+        }
+
+        console.error("Image generation failed. Full API response:", JSON.stringify(response, null, 2));
+        throw new Error(errorMessage);
+    }
+     // Fallback, should not be reached
+    throw new Error("Generazione immagine fallita dopo diversi tentativi.");
 };
 
 
